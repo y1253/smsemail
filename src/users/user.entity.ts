@@ -7,7 +7,6 @@ import {
 } from 'typeorm';
 import { Email } from '../emails/email.entity';
 import { Phone } from '../phones/phone.entity';
-import { Cc } from '../cc/cc.entity';
 import { Transaction } from '../transactions/transaction.entity';
 import { Subscription } from '../subscriptions/subscription.entity';
 
@@ -16,23 +15,26 @@ export class User {
   @PrimaryGeneratedColumn({ name: 'user_id' })
   userId!: number;
 
-  @Column({ name: 'first_name', length: 145, nullable: true })
+  @Column({ name: 'first_name', type: 'varchar', length: 145, nullable: true })
   firstName!: string | null;
 
-  @Column({ name: 'last_name', length: 145, nullable: true })
+  @Column({ name: 'last_name', type: 'varchar', length: 145, nullable: true })
   lastName!: string | null;
 
-  @Column({ name: 'email', length: 145, nullable: true })
+  @Column({ name: 'email', type: 'varchar', length: 145, nullable: true })
   email!: string | null;
 
-  @Column({ name: 'password', length: 45 })
+  @Column({ name: 'password', type: 'varchar', length: 245 })
   password!: string;
 
-  @Column({ name: 'auth_type', length: 45, nullable: true })
+  @Column({ name: 'auth_type', type: 'varchar', length: 45, nullable: true })
   authType!: string | null;
 
   @CreateDateColumn({ name: 'create_at', type: 'datetime' })
   createdAt!: Date;
+
+  @Column({ name: 'stripe_customer_id', type: 'varchar', length: 245, nullable: true })
+  stripeCustomerId!: string | null;
 
   @Column({ name: 'active', type: 'tinyint', nullable: true })
   active!: number | null;
@@ -42,9 +44,6 @@ export class User {
 
   @OneToMany(() => Phone, (phone) => phone.user)
   phones!: Phone[];
-
-  @OneToMany(() => Cc, (cc) => cc.user)
-  ccs!: Cc[];
 
   @OneToMany(() => Transaction, (transaction) => transaction.user)
   transactions!: Transaction[];

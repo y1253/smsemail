@@ -66,7 +66,7 @@ export class UsersService {
 
     return await this.createToken({
       userId: savedUser.userId,
-      email: savedUser.email,
+      email: savedUser.email || '',
     });
   }
 
@@ -96,7 +96,7 @@ export class UsersService {
 
     const accessToken = await this.createToken({
       userId: user.userId,
-      email: user.email,
+      email: user.email || '',
     });
 
     return {

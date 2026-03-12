@@ -15,7 +15,7 @@ export class Cc {
   @PrimaryGeneratedColumn({ name: 'cc_id' })
   ccId!: number;
 
-  @ManyToOne(() => User, (user) => user.ccs)
+  @ManyToOne(() => User)
   @JoinColumn({ name: 'user_id' })
   user!: User;
 

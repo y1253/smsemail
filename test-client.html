@@ -1,0 +1,707 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>SMS Email Test Client</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <script src="https://js.stripe.com/v3/"></script>
+  <style>
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #0f172a;
+      color: #e5e7eb;
+      margin: 0;
+      padding: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+    }
+
+    .app {
+      background: #020617;
+      border-radius: 16px;
+      border: 1px solid #1f2937;
+      box-shadow: 0 20px 45px rgba(15, 23, 42, 0.75);
+      padding: 24px 28px 28px;
+      max-width: 720px;
+      width: 100%;
+      box-sizing: border-box;
+    }
+
+    h1 {
+      font-size: 1.4rem;
+      margin: 0 0 4px;
+    }
+
+    .subtitle {
+      font-size: 0.85rem;
+      color: #9ca3af;
+      margin-bottom: 18px;
+    }
+
+    .tabs {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+
+    .tab {
+      flex: 1;
+      padding: 8px 0;
+      border-radius: 999px;
+      border: 1px solid #1f2937;
+      background: #020617;
+      color: #9ca3af;
+      font-size: 0.85rem;
+      cursor: pointer;
+      text-align: center;
+      transition: all 0.15s ease-out;
+    }
+
+    .tab.active {
+      background: linear-gradient(135deg, #4f46e5, #22c55e);
+      border-color: transparent;
+      color: white;
+      box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.3);
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+      gap: 20px;
+    }
+
+    .card {
+      border-radius: 14px;
+      border: 1px solid #1f2937;
+      background: radial-gradient(circle at top left, rgba(79, 70, 229, 0.12), transparent 55%),
+                  radial-gradient(circle at bottom right, rgba(34, 197, 94, 0.08), transparent 55%),
+                  #020617;
+      padding: 14px 14px 16px;
+    }
+
+    .card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+
+    .card-title {
+      font-size: 0.95rem;
+      font-weight: 600;
+    }
+
+    .chip {
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 0.7rem;
+      border: 1px solid rgba(148, 163, 184, 0.4);
+      color: #9ca3af;
+      background: rgba(15, 23, 42, 0.8);
+    }
+
+    label {
+      display: block;
+      font-size: 0.8rem;
+      color: #9ca3af;
+      margin-bottom: 4px;
+    }
+
+    input[type="text"],
+    input[type="email"],
+    input[type="password"],
+    input[type="url"] {
+      width: 100%;
+      padding: 7px 9px;
+      border-radius: 8px;
+      border: 1px solid #1f2937;
+      background: rgba(15, 23, 42, 0.9);
+      color: #e5e7eb;
+      font-size: 0.8rem;
+      box-sizing: border-box;
+    }
+
+    input::placeholder {
+      color: #6b7280;
+    }
+
+    input:focus {
+      outline: none;
+      border-color: #4f46e5;
+      box-shadow: 0 0 0 1px rgba(79, 70, 229, 0.3);
+    }
+
+    button {
+      border: none;
+      border-radius: 999px;
+      padding: 8px 14px;
+      font-size: 0.82rem;
+      font-weight: 500;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.15s ease-out;
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, #4f46e5, #22c55e);
+      color: white;
+      box-shadow: 0 10px 25px rgba(79, 70, 229, 0.4);
+    }
+
+    .btn-primary:hover {
+      filter: brightness(1.08);
+      transform: translateY(-1px);
+    }
+
+    .btn-secondary {
+      background: rgba(15, 23, 42, 0.9);
+      color: #9ca3af;
+      border: 1px solid #1f2937;
+    }
+
+    .btn-secondary:hover {
+      background: #020617;
+    }
+
+    .row {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .field {
+      margin-bottom: 8px;
+    }
+
+    .status {
+      font-size: 0.8rem;
+      color: #9ca3af;
+      margin-top: 6px;
+      white-space: pre-wrap;
+      max-height: 130px;
+      overflow: auto;
+    }
+
+    .status strong {
+      color: #e5e7eb;
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.78rem;
+      padding: 4px 9px;
+      border-radius: 999px;
+      border: 1px solid rgba(148, 163, 184, 0.6);
+      color: #9ca3af;
+    }
+
+    .pill-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 999px;
+      background: #ef4444;
+      box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.18);
+    }
+
+    .pill-dot.online {
+      background: #22c55e;
+      box-shadow: 0 0 0 4px rgba(34, 197, 94, 0.22);
+    }
+
+    .token {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      font-size: 0.72rem;
+      word-break: break-all;
+      color: #9ca3af;
+      background: rgba(15, 23, 42, 0.85);
+      border-radius: 8px;
+      padding: 6px 8px;
+      margin-top: 4px;
+      max-height: 72px;
+      overflow: auto;
+    }
+
+    #card-element {
+      padding: 8px 9px;
+      border-radius: 8px;
+      border: 1px solid #1f2937;
+      background: rgba(15, 23, 42, 0.9);
+      margin-bottom: 6px;
+    }
+
+    .actions {
+      display: flex;
+      gap: 8px;
+      margin-top: 6px;
+      flex-wrap: wrap;
+    }
+
+    @media (max-width: 720px) {
+      .app {
+        margin: 12px;
+        padding: 18px 16px 20px;
+      }
+      .grid {
+        grid-template-columns: minmax(0, 1fr);
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <h1>Test Client</h1>
+    <div class="subtitle">Login / signup, store JWT, attach card via Stripe, and hit <code>/trypayment</code>.</div>
+
+    <div class="tabs">
+      <button class="tab active" id="tab-auth">Auth</button>
+      <button class="tab" id="tab-pay">Payments</button>
+    </div>
+
+    <div class="grid">
+      <!-- Auth card -->
+      <div class="card" id="card-auth">
+        <div class="card-header">
+          <div class="card-title">Authentication</div>
+          <span class="chip">/users/create · /users/login</span>
+        </div>
+
+        <div class="field">
+          <label for="base-url">API base URL</label>
+          <input id="base-url" type="url" value="http://localhost:3000" />
+        </div>
+
+        <div class="row">
+          <div class="field">
+            <label for="first-name">First name (signup)</label>
+            <input id="first-name" type="text" placeholder="Jane" />
+          </div>
+          <div class="field">
+            <label for="last-name">Last name (signup)</label>
+            <input id="last-name" type="text" placeholder="Doe" />
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="email">Email</label>
+          <input id="email" type="email" placeholder="you@example.com" />
+        </div>
+
+        <div class="field">
+          <label for="password">Password</label>
+          <input id="password" type="password" placeholder="••••••••" />
+        </div>
+
+        <div class="actions">
+          <button class="btn-primary" id="btn-signup">Sign up &amp; store token</button>
+          <button class="btn-secondary" id="btn-login">Login &amp; store token</button>
+          <button class="btn-secondary" id="btn-logout">Clear token</button>
+        </div>
+
+        <div class="status" id="auth-status"></div>
+      </div>
+
+      <!-- Token / payment card -->
+      <div class="card" id="card-payments">
+        <div class="card-header">
+          <div class="card-title">Token &amp; Payments</div>
+          <span class="chip">x-token header + Stripe</span>
+        </div>
+
+        <div class="field">
+          <div class="pill" id="pill-login-state">
+            <span class="pill-dot" id="pill-dot"></span>
+            <span id="login-state-label">Not logged in</span>
+          </div>
+          <div class="token" id="token-display">No token stored in localStorage.</div>
+        </div>
+
+        <div class="field">
+          <label>Stripe card (test)</label>
+          <div id="card-element"></div>
+          <small style="font-size:0.72rem;color:#6b7280;">Use Stripe test cards, e.g. 4242 4242 4242 4242.</small>
+        </div>
+
+        <div class="actions">
+          <button class="btn-primary" id="btn-attach-card">Attach card via /cc</button>
+          <button class="btn-secondary" id="btn-list-cards">List cards via /cc (GET)</button>
+          <button class="btn-secondary" id="btn-try-payment">Call /trypayment</button>
+        </div>
+
+        <div class="status" id="payment-status"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // --- Config ---
+    const STRIPE_PUBLISHABLE_KEY = 'pk_test_51RQYqwPEMvMm4FGmkdKOTwPJCmd9KPGC2PUL44WfVH4YTGK6QKIc28vntFvsbYsoOd74zYyzfKdd8ljSwyPeteeo00fmD2igsX';
+    const STORAGE_KEY = 'auth-token';
+
+    const baseUrlInput = document.getElementById('base-url');
+    const authStatusEl = document.getElementById('auth-status');
+    const paymentStatusEl = document.getElementById('payment-status');
+    const tokenDisplayEl = document.getElementById('token-display');
+    const loginStateLabel = document.getElementById('login-state-label');
+    const pillDot = document.getElementById('pill-dot');
+
+    const firstNameInput = document.getElementById('first-name');
+    const lastNameInput = document.getElementById('last-name');
+    const emailInput = document.getElementById('email');
+    const passwordInput = document.getElementById('password');
+
+    const btnSignup = document.getElementById('btn-signup');
+    const btnLogin = document.getElementById('btn-login');
+    const btnLogout = document.getElementById('btn-logout');
+    const btnAttachCard = document.getElementById('btn-attach-card');
+    const btnListCards = document.getElementById('btn-list-cards');
+    const btnTryPayment = document.getElementById('btn-try-payment');
+
+    const tabAuth = document.getElementById('tab-auth');
+    const tabPay = document.getElementById('tab-pay');
+    const cardAuth = document.getElementById('card-auth');
+    const cardPayments = document.getElementById('card-payments');
+
+    // --- UI helpers ---
+    function getBaseUrl() {
+      const value = (baseUrlInput.value || '').trim();
+      return value.replace(/\/+$/, '') || 'http://localhost:3000';
+    }
+
+    function getToken() {
+      return localStorage.getItem(STORAGE_KEY) || '';
+    }
+
+    function setToken(token) {
+      if (token) {
+        localStorage.setItem(STORAGE_KEY, token);
+      } else {
+        localStorage.removeItem(STORAGE_KEY);
+      }
+      refreshTokenUI();
+    }
+
+    function refreshTokenUI() {
+      const token = getToken();
+      if (token) {
+        tokenDisplayEl.textContent = token;
+        loginStateLabel.textContent = 'Token stored (x-token will be sent)';
+        pillDot.classList.add('online');
+      } else {
+        tokenDisplayEl.textContent = 'No token stored in localStorage.';
+        loginStateLabel.textContent = 'Not logged in';
+        pillDot.classList.remove('online');
+      }
+    }
+
+    function setStatus(el, message, isError = false) {
+      if (!message) {
+        el.textContent = '';
+        return;
+      }
+      el.innerHTML =
+        '<strong>' +
+        (isError ? 'Error: ' : 'Result: ') +
+        '</strong>' +
+        message;
+    }
+
+    function stringifyResult(data) {
+      if (typeof data === 'string') return data;
+      try {
+        return JSON.stringify(data, null, 2);
+      } catch {
+        return String(data);
+      }
+    }
+
+    // --- Tabs ---
+    tabAuth.addEventListener('click', () => {
+      tabAuth.classList.add('active');
+      tabPay.classList.remove('active');
+      cardAuth.style.display = '';
+      cardPayments.style.display = '';
+    });
+
+    tabPay.addEventListener('click', () => {
+      tabPay.classList.add('active');
+      tabAuth.classList.remove('active');
+      cardAuth.style.display = '';
+      cardPayments.style.display = '';
+      // (we keep both visible, tabs are just a visual cue)
+    });
+
+    // --- Auth handlers ---
+    async function signup() {
+      const baseUrl = getBaseUrl();
+      const payload = {
+        first_name: firstNameInput.value || 'Test',
+        last_name: lastNameInput.value || 'User',
+        email: emailInput.value,
+        password: passwordInput.value || 'password123',
+      };
+
+      if (!payload.email) {
+        setStatus(authStatusEl, 'Email is required for signup.', true);
+        return;
+      }
+
+      try {
+        setStatus(authStatusEl, 'Creating user...', false);
+        const res = await fetch(baseUrl + '/users/create', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(payload),
+        });
+
+        const text = await res.text();
+
+        if (!res.ok) {
+          let err = text;
+          try {
+            const json = JSON.parse(text);
+            err = stringifyResult(json);
+          } catch {}
+          setStatus(authStatusEl, err, true);
+          return;
+        }
+
+        // UsersService.createNewUser returns a raw JWT string
+        const token = text.replace(/^"|"$/g, '');
+        setToken(token);
+        setStatus(authStatusEl, 'Signup OK. Token stored to localStorage.', false);
+      } catch (e) {
+        setStatus(authStatusEl, e.message || String(e), true);
+      }
+    }
+
+    async function login() {
+      const baseUrl = getBaseUrl();
+      const payload = {
+        email: emailInput.value,
+        password: passwordInput.value || 'password123',
+      };
+
+      if (!payload.email) {
+        setStatus(authStatusEl, 'Email is required for login.', true);
+        return;
+      }
+
+      try {
+        setStatus(authStatusEl, 'Logging in...', false);
+        const res = await fetch(baseUrl + '/users/login', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(payload),
+        });
+
+        const text = await res.text();
+
+        if (!res.ok) {
+          let err = text;
+          try {
+            const json = JSON.parse(text);
+            err = stringifyResult(json);
+          } catch {}
+          setStatus(authStatusEl, err, true);
+          return;
+        }
+
+        // UsersService.login returns the JWT as a string
+        const token = text.replace(/^"|"$/g, '');
+        setToken(token);
+        setStatus(authStatusEl, 'Login OK. Token stored to localStorage.', false);
+      } catch (e) {
+        setStatus(authStatusEl, e.message || String(e), true);
+      }
+    }
+
+    btnSignup.addEventListener('click', (e) => {
+      e.preventDefault();
+      signup();
+    });
+
+    btnLogin.addEventListener('click', (e) => {
+      e.preventDefault();
+      login();
+    });
+
+    btnLogout.addEventListener('click', (e) => {
+      e.preventDefault();
+      setToken('');
+      setStatus(authStatusEl, 'Token cleared from localStorage.', false);
+    });
+
+    // --- Stripe setup ---
+    const stripe = Stripe(STRIPE_PUBLISHABLE_KEY);
+    const elements = stripe.elements({
+      appearance: {
+        theme: 'night',
+      },
+    });
+    const cardElement = elements.create('card', {
+      style: {
+        base: {
+          color: '#e5e7eb',
+          '::placeholder': {
+            color: '#6b7280',
+          },
+        },
+      },
+    });
+    cardElement.mount('#card-element');
+
+    // --- Payment handlers ---
+    async function attachCard() {
+      const token = getToken();
+      if (!token) {
+        setStatus(paymentStatusEl, 'No token in localStorage. Login or signup first.', true);
+        return;
+      }
+
+      const baseUrl = getBaseUrl();
+
+      try {
+        setStatus(paymentStatusEl, 'Creating Stripe PaymentMethod...', false);
+        const { error, paymentMethod } = await stripe.createPaymentMethod({
+          type: 'card',
+          card: cardElement,
+        });
+
+        if (error) {
+          setStatus(paymentStatusEl, error.message || 'Stripe error', true);
+          return;
+        }
+
+        setStatus(
+          paymentStatusEl,
+          'PaymentMethod created: ' + paymentMethod.id + '. Sending to /cc with x-token...',
+          false
+        );
+
+        const res = await fetch(baseUrl + '/cc', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-token': token,
+          },
+          body: JSON.stringify({ paymentMethodId: paymentMethod.id }),
+        });
+
+        const text = await res.text();
+        let body = text;
+        try {
+          body = JSON.stringify(JSON.parse(text), null, 2);
+        } catch {}
+
+        if (!res.ok) {
+          setStatus(paymentStatusEl, body, true);
+          return;
+        }
+
+        setStatus(paymentStatusEl, body, false);
+      } catch (e) {
+        setStatus(paymentStatusEl, e.message || String(e), true);
+      }
+    }
+
+    async function callTryPayment() {
+      const token = getToken();
+      if (!token) {
+        setStatus(paymentStatusEl, 'No token in localStorage. Login or signup first.', true);
+        return;
+      }
+
+      const baseUrl = getBaseUrl();
+
+      try {
+        setStatus(paymentStatusEl, 'Calling /trypayment with x-token...', false);
+        const res = await fetch(baseUrl + '/trypayment', {
+          method: 'GET',
+          headers: {
+            'x-token': token,
+          },
+        });
+
+        const text = await res.text();
+        let body = text;
+        try {
+          body = JSON.stringify(JSON.parse(text), null, 2);
+        } catch {}
+
+        if (!res.ok) {
+          setStatus(paymentStatusEl, body, true);
+          return;
+        }
+
+        setStatus(paymentStatusEl, body, false);
+      } catch (e) {
+        setStatus(paymentStatusEl, e.message || String(e), true);
+      }
+    }
+
+    btnAttachCard.addEventListener('click', (e) => {
+      e.preventDefault();
+      attachCard();
+    });
+
+    async function listCards() {
+      const token = getToken();
+      if (!token) {
+        setStatus(paymentStatusEl, 'No token in localStorage. Login or signup first.', true);
+        return;
+      }
+
+      const baseUrl = getBaseUrl();
+
+      try {
+        setStatus(paymentStatusEl, 'Calling GET /cc with x-token...', false);
+        const res = await fetch(baseUrl + '/cc', {
+          method: 'GET',
+          headers: {
+            'x-token': token,
+          },
+        });
+
+        const text = await res.text();
+        let body = text;
+        try {
+          body = JSON.stringify(JSON.parse(text), null, 2);
+        } catch {}
+
+        if (!res.ok) {
+          setStatus(paymentStatusEl, body, true);
+          return;
+        }
+
+        setStatus(paymentStatusEl, body, false);
+      } catch (e) {
+        setStatus(paymentStatusEl, e.message || String(e), true);
+      }
+    }
+
+    btnListCards.addEventListener('click', (e) => {
+      e.preventDefault();
+      listCards();
+    });
+
+    btnTryPayment.addEventListener('click', (e) => {
+      e.preventDefault();
+      callTryPayment();
+    });
+
+    // Initial state
+    refreshTokenUI();
+  </script>
+</body>
+</html>
+

@@ -1,6 +1,15 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
+import { Cc } from '../cc/cc.entity';
+import { Email } from '../emails/email.entity';
+import { Phone } from '../phones/phone.entity';
+import { Transaction } from '../transactions/transaction.entity';
+import { User } from '../users/user.entity';
+import { OutMessage } from '../messages/out-message.entity';
+import { IncomeMessage } from '../messages/income-message.entity';
+import { Subscription } from '../subscriptions/subscription.entity';
+
 @Module({
   imports: [
     TypeOrmModule.forRoot({
@@ -10,12 +19,13 @@ import { TypeOrmModule } from '@nestjs/typeorm';
       port: 3306,
       username: 'yg',
       password: '12345',
-      database: 'payments',
+      database: 'smsemail',
       synchronize: true,
-      autoLoadEntities: true,
+      entities: [User, Email, Phone, Cc, Transaction, Subscription, IncomeMessage, OutMessage],
+
     }),
   ],
   exports: [TypeOrmModule],
 })
-export class DbConfigModule {}
+export class DbConfigModule { }
 

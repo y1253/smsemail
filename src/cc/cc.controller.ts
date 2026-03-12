@@ -1,7 +1,8 @@
-import { Body, Controller, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Post, UseGuards } from '@nestjs/common';
 import { CcService } from './cc.service';
 import { AuthGuard } from '../auth/auth.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
+import { AttachPaymentMethodDto } from './dto/attach-payment-method.dto';
 
 type JwtPayload = {
   user_id: number;
@@ -14,12 +15,19 @@ export class CcController {
 
   @Post()
   @UseGuards(AuthGuard)
-  async createCc(
-    @Body('cc') cc: string,
+  async attachPaymentMethod(
+    @Body() dto: AttachPaymentMethodDto,
     @CurrentUser() user: JwtPayload,
   ) {
-    const userId = user.user_id;
-    return this.ccService.createForUser(userId, cc);
+    return this.ccService.attachPaymentMethodForUser(
+      user.user_id,
+      dto.paymentMethodId,
+    );
+  }
+
+  @Get()
+  @UseGuards(AuthGuard)
+  async listPaymentMethods(@CurrentUser() user: JwtPayload) {
+    return this.ccService.listPaymentMethodsForUser(user.user_id);
   }
 }
-
