@@ -261,6 +261,7 @@
     <div class="tabs">
       <button class="tab active" id="tab-auth">Auth</button>
       <button class="tab" id="tab-pay">Payments</button>
+      <button class="tab" id="tab-gmail">Gmail</button>
     </div>
 
     <div class="grid">
@@ -306,6 +307,35 @@
         <div class="status" id="auth-status"></div>
       </div>
 
+      <!-- Gmail connect card -->
+      <div class="card" id="card-gmail-section">
+        <div class="card-header">
+          <div class="card-title">Connect Gmail</div>
+          <span class="chip">/emails/google/connect</span>
+        </div>
+
+        <div class="field">
+          <label for="gmail-code">Google auth code (from redirect URL)</label>
+          <input
+            id="gmail-code"
+            type="text"
+            placeholder="Paste ?code=... value from Google redirect"
+          />
+          <small style="font-size:0.72rem;color:#6b7280;display:block;margin-top:4px;">
+            This page uses Google client ID <code id="gmail-client-id"></code>. It opens Google's consent screen, then
+            sends the returned <code>code</code> to <code>/emails/google/connect</code>, where the server exchanges it
+            for tokens and encrypts the refresh_token.
+          </small>
+        </div>
+
+        <div class="actions">
+          <button class="btn-secondary" id="btn-open-google-consent">Open Google consent</button>
+          <button class="btn-primary" id="btn-connect-gmail">Send code to backend</button>
+        </div>
+
+        <div class="status" id="gmail-status"></div>
+      </div>
+
       <!-- Token / payment card -->
       <div class="card" id="card-payments">
         <div class="card-header">
@@ -327,9 +357,15 @@
           <small style="font-size:0.72rem;color:#6b7280;">Use Stripe test cards, e.g. 4242 4242 4242 4242.</small>
         </div>
 
+        <div class="field">
+          <label for="cc-id-delete">Card ID to delete (cc_id, e.g. pm_xxx)</label>
+          <input id="cc-id-delete" type="text" placeholder="pm_1TAEB4PEMvMm4FGmzXSIZHMo" />
+        </div>
+
         <div class="actions">
           <button class="btn-primary" id="btn-attach-card">Attach card via /cc</button>
           <button class="btn-secondary" id="btn-list-cards">List cards via /cc (GET)</button>
+          <button class="btn-secondary" id="btn-delete-card">Delete card (DELETE /cc)</button>
           <button class="btn-secondary" id="btn-try-payment">Call /trypayment</button>
         </div>
 
@@ -340,8 +376,11 @@
 
   <script>
     // --- Config ---
-    const STRIPE_PUBLISHABLE_KEY = 'pk_test_51RQYqwPEMvMm4FGmkdKOTwPJCmd9KPGC2PUL44WfVH4YTGK6QKIc28vntFvsbYsoOd74zYyzfKdd8ljSwyPeteeo00fmD2igsX';
+    const STRIPE_PUBLISHABLE_KEY =
+      'pk_test_51RQYqwPEMvMm4FGmkdKOTwPJCmd9KPGC2PUL44WfVH4YTGK6QKIc28vntFvsbYsoOd74zYyzfKdd8ljSwyPeteeo00fmD2igsX';
     const STORAGE_KEY = 'auth-token';
+    const GOOGLE_CLIENT_ID =
+      '876794026344-eheb75ln2lc5rh82a8pej6ohr937u037.apps.googleusercontent.com';
 
     const baseUrlInput = document.getElementById('base-url');
     const authStatusEl = document.getElementById('auth-status');
@@ -360,12 +399,22 @@
     const btnLogout = document.getElementById('btn-logout');
     const btnAttachCard = document.getElementById('btn-attach-card');
     const btnListCards = document.getElementById('btn-list-cards');
+    const btnDeleteCard = document.getElementById('btn-delete-card');
     const btnTryPayment = document.getElementById('btn-try-payment');
+    const ccIdDeleteInput = document.getElementById('cc-id-delete');
+
+    const gmailCodeInput = document.getElementById('gmail-code');
+    const gmailStatusEl = document.getElementById('gmail-status');
+    const btnOpenGoogleConsent = document.getElementById('btn-open-google-consent');
+    const btnConnectGmail = document.getElementById('btn-connect-gmail');
+    const gmailClientIdEl = document.getElementById('gmail-client-id');
 
     const tabAuth = document.getElementById('tab-auth');
     const tabPay = document.getElementById('tab-pay');
+    const tabGmail = document.getElementById('tab-gmail');
     const cardAuth = document.getElementById('card-auth');
     const cardPayments = document.getElementById('card-payments');
+    const cardGmail = document.getElementById('card-gmail-section');
 
     // --- UI helpers ---
     function getBaseUrl() {
@@ -424,16 +473,28 @@
     tabAuth.addEventListener('click', () => {
       tabAuth.classList.add('active');
       tabPay.classList.remove('active');
+      tabGmail.classList.remove('active');
       cardAuth.style.display = '';
-      cardPayments.style.display = '';
+      cardPayments.style.display = 'none';
+      cardGmail.style.display = 'none';
     });
 
     tabPay.addEventListener('click', () => {
       tabPay.classList.add('active');
       tabAuth.classList.remove('active');
-      cardAuth.style.display = '';
+      tabGmail.classList.remove('active');
+      cardAuth.style.display = 'none';
       cardPayments.style.display = '';
-      // (we keep both visible, tabs are just a visual cue)
+      cardGmail.style.display = 'none';
+    });
+
+    tabGmail.addEventListener('click', () => {
+      tabGmail.classList.add('active');
+      tabAuth.classList.remove('active');
+      tabPay.classList.remove('active');
+      cardAuth.style.display = 'none';
+      cardPayments.style.display = 'none';
+      cardGmail.style.display = '';
     });
 
     // --- Auth handlers ---
@@ -539,6 +600,82 @@
       e.preventDefault();
       setToken('');
       setStatus(authStatusEl, 'Token cleared from localStorage.', false);
+    });
+
+    // --- Gmail OAuth helpers ---
+    function getRedirectUri() {
+      // Should match GOOGLE_REDIRECT_URI in backend (.env)
+      return getBaseUrl() + '/trypayment';
+    }
+
+    function buildGoogleAuthUrl() {
+      const redirectUri = getRedirectUri();
+      const params = new URLSearchParams({
+        client_id: GOOGLE_CLIENT_ID,
+        redirect_uri: redirectUri,
+        response_type: 'code',
+        access_type: 'offline',
+        prompt: 'consent',
+        scope: [
+          'email',
+          'https://www.googleapis.com/auth/gmail.readonly',
+          'https://www.googleapis.com/auth/gmail.send',
+        ].join(' '),
+      });
+      return `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
+    }
+
+    async function connectGmail() {
+      const token = getToken();
+      if (!token) {
+        setStatus(gmailStatusEl, 'No token in localStorage. Login or signup first.', true);
+        return;
+      }
+
+      const code = (gmailCodeInput.value || '').trim();
+      if (!code) {
+        setStatus(gmailStatusEl, 'No Google auth code. Open consent, approve, and paste ?code=... here.', true);
+        return;
+      }
+
+      const baseUrl = getBaseUrl();
+      try {
+        setStatus(gmailStatusEl, 'Sending to /emails/google/connect ...', false);
+        const res = await fetch(baseUrl + '/emails/google/connect', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-token': token,
+          },
+          body: JSON.stringify({ code }),
+        });
+
+        const text = await res.text();
+        let body = text;
+        try {
+          body = JSON.stringify(JSON.parse(text), null, 2);
+        } catch {}
+
+        if (!res.ok) {
+          setStatus(gmailStatusEl, body, true);
+          return;
+        }
+
+        setStatus(gmailStatusEl, body, false);
+      } catch (e) {
+        setStatus(gmailStatusEl, e.message || String(e), true);
+      }
+    }
+
+    btnOpenGoogleConsent.addEventListener('click', (e) => {
+      e.preventDefault();
+      const url = buildGoogleAuthUrl();
+      window.open(url, '_blank');
+    });
+
+    btnConnectGmail.addEventListener('click', (e) => {
+      e.preventDefault();
+      connectGmail();
     });
 
     // --- Stripe setup ---
@@ -694,6 +831,52 @@
       listCards();
     });
 
+    async function deleteCard() {
+      const token = getToken();
+      if (!token) {
+        setStatus(paymentStatusEl, 'No token in localStorage. Login or signup first.', true);
+        return;
+      }
+      const ccId = (ccIdDeleteInput.value || '').trim();
+      if (!ccId) {
+        setStatus(paymentStatusEl, 'Enter a card ID (cc_id) to delete, e.g. pm_xxx.', true);
+        return;
+      }
+
+      const baseUrl = getBaseUrl();
+      try {
+        setStatus(paymentStatusEl, 'Calling DELETE /cc with x-token...', false);
+        const res = await fetch(baseUrl + '/cc', {
+          method: 'DELETE',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-token': token,
+          },
+          body: JSON.stringify({ cc_id: ccId }),
+        });
+
+        const text = await res.text();
+        let body = text;
+        try {
+          body = JSON.stringify(JSON.parse(text), null, 2);
+        } catch {}
+
+        if (!res.ok) {
+          setStatus(paymentStatusEl, body, true);
+          return;
+        }
+        setStatus(paymentStatusEl, body, false);
+        ccIdDeleteInput.value = '';
+      } catch (e) {
+        setStatus(paymentStatusEl, e.message || String(e), true);
+      }
+    }
+
+    btnDeleteCard.addEventListener('click', (e) => {
+      e.preventDefault();
+      deleteCard();
+    });
+
     btnTryPayment.addEventListener('click', (e) => {
       e.preventDefault();
       callTryPayment();
@@ -701,6 +884,23 @@
 
     // Initial state
     refreshTokenUI();
+    // Pre-fill code from URL if Google redirected back with ?code=
+    const urlParams = new URLSearchParams(window.location.search);
+    const codeFromUrl = urlParams.get('code');
+    if (codeFromUrl && gmailCodeInput) {
+      gmailCodeInput.value = codeFromUrl;
+      tabGmail.click();
+      setStatus(
+        gmailStatusEl,
+        'Found code in URL. You can now click \"Send code to backend\" to connect Gmail.',
+        false,
+      );
+    }
+    gmailClientIdEl.textContent = GOOGLE_CLIENT_ID;
+    // default tab view
+    cardAuth.style.display = '';
+    cardPayments.style.display = 'none';
+    cardGmail.style.display = 'none';
   </script>
 </body>
 </html>

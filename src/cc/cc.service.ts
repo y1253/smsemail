@@ -73,4 +73,24 @@ export class CcService {
       data: paymentMethods.data,
     };
   }
+
+  async deletePaymentMethodForUser(
+    userId: number,
+    paymentMethodId: string,
+  ): Promise<{ deleted: string }> {
+    const user = await this.userRepo.findOne({ where: { userId } });
+    if (!user) throw new BadRequestException('User not found');
+
+    if (!user.stripeCustomerId) {
+      throw new BadRequestException('No saved cards for this user');
+    }
+
+    const pm = await this.stripe.paymentMethods.retrieve(paymentMethodId);
+    if (pm.customer !== user.stripeCustomerId) {
+      throw new BadRequestException('Card does not belong to this user');
+    }
+
+    await this.stripe.paymentMethods.detach(paymentMethodId);
+    return { deleted: paymentMethodId };
+  }
 }
