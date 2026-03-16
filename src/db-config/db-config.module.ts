@@ -1,7 +1,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
-import { Cc } from '../cc/cc.entity';
+
 import { Email } from '../emails/email.entity';
 import { Phone } from '../phones/phone.entity';
 import { Transaction } from '../transactions/transaction.entity';
@@ -21,7 +21,7 @@ import { Subscription } from '../subscriptions/subscription.entity';
       password: '12345',
       database: 'smsemail',
       synchronize: true,
-      entities: [User, Email, Phone, Cc, Transaction, Subscription, IncomeMessage, OutMessage],
+      entities: [User, Email, Phone, Transaction, Subscription, IncomeMessage, OutMessage],
 
     }),
   ],

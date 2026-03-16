@@ -6,7 +6,7 @@ import {
   JoinColumn,
 } from 'typeorm';
 import { User } from '../users/user.entity';
-import { Cc } from '../cc/cc.entity';
+
 
 @Entity('subscription')
 export class Subscription {
@@ -17,9 +17,7 @@ export class Subscription {
   @JoinColumn({ name: 'user_id' })
   user!: User;
 
-  @ManyToOne(() => Cc, (cc) => cc.subscriptions)
-  @JoinColumn({ name: 'cc_id' })
-  cc!: Cc;
+
 
   @Column({ name: 'activate_at', type: 'datetime' })
   activateAt!: Date;

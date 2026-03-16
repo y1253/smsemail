@@ -6,7 +6,6 @@ import {
   JoinColumn,
 } from 'typeorm';
 import { User } from '../users/user.entity';
-import { Cc } from '../cc/cc.entity';
 
 @Entity('transaction')
 export class Transaction {
@@ -17,9 +16,7 @@ export class Transaction {
   @JoinColumn({ name: 'user_id' })
   user!: User;
 
-  @ManyToOne(() => Cc, (cc) => cc.transactions)
-  @JoinColumn({ name: 'cc_id' })
-  cc!: Cc;
+
 
   @Column({
     name: 'amont',
