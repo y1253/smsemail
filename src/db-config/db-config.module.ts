@@ -10,6 +10,7 @@ import { User } from '../users/user.entity';
 import { OutMessage } from '../messages/out-message.entity';
 import { IncomeMessage } from '../messages/income-message.entity';
 import { Subscription } from '../subscriptions/subscription.entity';
+import { EmailPhoneSet } from '../sets/email-phone-set.entity';
 
 @Module({
   imports: [
@@ -22,7 +23,7 @@ import { Subscription } from '../subscriptions/subscription.entity';
       password: '12345',
       database: 'smsemail',
       synchronize: true,
-      entities: [User, Email, Phone, PhoneVerification, Transaction, Subscription, IncomeMessage, OutMessage],
+      entities: [User, Email, Phone, PhoneVerification, Transaction, Subscription, IncomeMessage, OutMessage, EmailPhoneSet],
 
     }),
   ],

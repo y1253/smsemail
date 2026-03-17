@@ -39,6 +39,8 @@ export class EmailsService {
       throw new BadRequestException('User not found');
     }
 
+    
+
     if (!dto.code) {
       throw new BadRequestException('Missing Google auth code');
     }

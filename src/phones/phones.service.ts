@@ -99,6 +99,29 @@ export class PhonesService {
     return { verified: true, phoneId: newPhone.phoneId };
   }
 
+  async deletePhoneForUser(
+    userId: number,
+    phoneId: number,
+  ): Promise<{ deleted: true; phoneId: number }> {
+    const phone = await this.phoneRepo.findOne({
+      where: { phoneId },
+      relations: ['user'],
+    });
+
+    if (!phone || phone.user.userId !== userId) {
+      throw new BadRequestException('Phone not found for this user');
+    }
+
+    if (phone.deletedAt) {
+      return { deleted: true, phoneId: phone.phoneId };
+    }
+
+    phone.deletedAt = new Date();
+    await this.phoneRepo.save(phone);
+
+    return { deleted: true, phoneId: phone.phoneId };
+  }
+
   private generateCode(): string {
     const digits = '0123456789';
     let code = '';

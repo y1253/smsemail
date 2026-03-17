@@ -8,6 +8,7 @@ import { CcModule } from './cc/cc.module';
 import { EmailsModule } from './emails/emails.module';
 import { SignalwireModule } from './signalwire/signalwire.module';
 import { PhonesModule } from './phones/phones.module';
+import { SetsModule } from './sets/sets.module';
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { PhonesModule } from './phones/phones.module';
     CcModule,
     EmailsModule,
     PhonesModule,
+    SetsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

@@ -1,9 +1,10 @@
-import { Body, Controller, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Post, UseGuards } from '@nestjs/common';
 import { PhonesService } from './phones.service';
 import { AuthGuard } from '../auth/auth.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { AddPhoneDto } from './dto/add-phone.dto';
 import { VerifyPhoneDto } from './dto/verify-phone.dto';
+import { DeletePhoneDto } from './dto/delete-phone.dto';
 
 type JwtPayload = {
   user_id: number;
@@ -30,5 +31,14 @@ export class PhonesController {
     @CurrentUser() user: JwtPayload,
   ) {
     return this.phonesService.verifyCode(user.user_id, dto.phone, dto.code);
+  }
+
+  @Delete('delete')
+  @UseGuards(AuthGuard)
+  async deletePhone(
+    @Body() dto: DeletePhoneDto,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.phonesService.deletePhoneForUser(user.user_id, dto.phoneId);
   }
 }
