@@ -1,12 +1,13 @@
 import { Injectable, BadRequestException, Inject } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, IsNull } from 'typeorm';
 import { Email } from './email.entity';
 import { User } from '../users/user.entity';
 import { ConnectGoogleEmailDto } from './dto/connect-google-email.dto';
 import { ConfigService } from '@nestjs/config';
 import * as crypto from 'crypto';
 import { OAuth2Client } from 'google-auth-library';
+import { GmailService } from '../gmail/gmail.service';
 
 type JwtPayload = {
   user_id: number;
@@ -25,6 +26,7 @@ export class EmailsService {
     private readonly config: ConfigService,
     @Inject('GOOGLE_CLIENT')
     private readonly googleClient: OAuth2Client,
+    private readonly gmailService: GmailService,
   ) {
     const key = this.config.get<string>('REFRESH_TOKEN_KEY');
     if (!key || key.length < 32) {
@@ -90,10 +92,34 @@ export class EmailsService {
 
     await this.emailRepo.save(email);
 
+    const decrypted = this.decrypt(email.refreshToken);
+    const { historyId, expiry } = await this.gmailService.watchGmail(decrypted);
+    email.lastHistoryId = historyId;
+    email.watchExpiry = expiry;
+    await this.emailRepo.save(email);
+
     return {
       emailId: email.emailId,
       email: email.email,
     };
+  }
+
+  async listEmailsForUser(userId: number) {
+    const emails = await this.emailRepo.find({
+      where: { user: { userId }, deletedAt: IsNull() },
+      order: { addedAt: 'ASC' },
+    });
+    return emails.map((e) => ({ emailId: e.emailId, email: e.email, addedAt: e.addedAt }));
+  }
+
+  decrypt(encrypted: string): string {
+    const buf = Buffer.from(encrypted, 'base64');
+    const iv = buf.subarray(0, 12);
+    const tag = buf.subarray(12, 28);
+    const data = buf.subarray(28);
+    const decipher = crypto.createDecipheriv('aes-256-gcm', this.encryptionKey, iv);
+    decipher.setAuthTag(tag);
+    return Buffer.concat([decipher.update(data), decipher.final()]).toString('utf-8');
   }
 
   private encrypt(plain: string): string {

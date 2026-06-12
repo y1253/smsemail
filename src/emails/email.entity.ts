@@ -31,6 +31,12 @@ export class Email {
   @Column({ name: 'deleted_at', type: 'datetime', nullable: true })
   deletedAt!: Date | null;
 
+  @Column({ name: 'last_history_id', type: 'varchar', length: 30, nullable: true })
+  lastHistoryId!: string | null;
+
+  @Column({ name: 'watch_expiry', type: 'datetime', nullable: true })
+  watchExpiry!: Date | null;
+
   @OneToMany(() => IncomeMessage, (message) => message.email)
   incomeMessages!: IncomeMessage[];
 

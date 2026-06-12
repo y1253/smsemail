@@ -24,5 +24,11 @@ export class IncomeMessage {
 
   @Column({ name: 'gmail_thread_id', length: 145 })
   gmailThreadId!: string;
+
+  @Column({ name: 'sender', length: 145 })
+  sender!: string;
+
+  @Column({ name: 'subject', length: 255 })
+  subject!: string;
 }
 

@@ -1,4 +1,4 @@
-import { Body, Controller, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Post, UseGuards } from '@nestjs/common';
 import { EmailsService } from './emails.service';
 import { AuthGuard } from '../auth/auth.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
@@ -12,6 +12,12 @@ type JwtPayload = {
 @Controller('emails')
 export class EmailsController {
   constructor(private readonly emailsService: EmailsService) {}
+
+  @Get()
+  @UseGuards(AuthGuard)
+  async listEmails(@CurrentUser() user: JwtPayload) {
+    return this.emailsService.listEmailsForUser(user.user_id);
+  }
 
   @Post('google/connect')
   @UseGuards(AuthGuard)

@@ -71,8 +71,11 @@ export class UsersService {
   }
 
   async googleLogin(credential: string) {
+    const { tokens } = await this.googleClient.getToken(credential);
+    if (!tokens.id_token) throw new UnauthorizedException('Google did not return an id_token');
+
     const ticket = await this.googleClient.verifyIdToken({
-      idToken: credential,
+      idToken: tokens.id_token,
       audience: process.env.GOOGLE_CLIENT_ID,
     });
 

@@ -1,6 +1,6 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, IsNull } from 'typeorm';
 import { User } from '../users/user.entity';
 import { Phone } from './phone.entity';
 import { PhoneVerification } from './phone-verification.entity';
@@ -25,6 +25,14 @@ export class PhonesService {
    * Send verification code to the given phone via SignalWire.
    * Stores the code for later verification step.
    */
+  async listPhonesForUser(userId: number) {
+    const phones = await this.phoneRepo.find({
+      where: { user: { userId }, deletedAt: IsNull() },
+      order: { addedAt: 'ASC' },
+    });
+    return phones.map((p) => ({ phoneId: p.phoneId, phone: p.phone, addedAt: p.addedAt }));
+  }
+
   async sendVerificationCode(userId: number, phone: string): Promise<{ sent: boolean }> {
     const user = await this.userRepo.findOne({ where: { userId } });
     if (!user) {

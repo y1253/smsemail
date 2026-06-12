@@ -59,19 +59,20 @@ export class CcService {
     const user = await this.userRepo.findOne({ where: { userId } });
     if (!user) throw new BadRequestException('User not found');
 
-    if (!user.stripeCustomerId) {
-      return { stripeCustomerId: null, data: [] };
-    }
+    if (!user.stripeCustomerId) return [];
 
-    const paymentMethods = await this.stripe.paymentMethods.list({
+    const { data } = await this.stripe.paymentMethods.list({
       customer: user.stripeCustomerId,
       type: 'card',
     });
 
-    return {
-      stripeCustomerId: user.stripeCustomerId,
-      data: paymentMethods.data,
-    };
+    return data.map((pm) => ({
+      id: pm.id,
+      brand: pm.card?.brand ?? '',
+      last4: pm.card?.last4 ?? '',
+      expMonth: pm.card?.exp_month ?? 0,
+      expYear: pm.card?.exp_year ?? 0,
+    }));
   }
 
   async deletePaymentMethodForUser(

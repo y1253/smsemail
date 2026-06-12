@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Post, UseGuards } from '@nestjs/common';
 import { PhonesService } from './phones.service';
 import { AuthGuard } from '../auth/auth.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
@@ -14,6 +14,12 @@ type JwtPayload = {
 @Controller('phones')
 export class PhonesController {
   constructor(private readonly phonesService: PhonesService) {}
+
+  @Get()
+  @UseGuards(AuthGuard)
+  async listPhones(@CurrentUser() user: JwtPayload) {
+    return this.phonesService.listPhonesForUser(user.user_id);
+  }
 
   @Post()
   @UseGuards(AuthGuard)

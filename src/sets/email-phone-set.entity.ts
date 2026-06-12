@@ -26,5 +26,8 @@ export class EmailPhoneSet {
 
   @Column({ name: 'deleted_at', type: 'datetime', nullable: true })
   deletedAt!: Date | null;
+
+  @Column({ name: 'stripe_subscription_id', type: 'varchar', length: 100, nullable: true })
+  stripeSubscriptionId!: string | null;
 }
 

@@ -1,4 +1,4 @@
-import { Body, Controller, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, ParseIntPipe, Post, UseGuards } from '@nestjs/common';
 import { SetsService } from './sets.service';
 import { AuthGuard } from '../auth/auth.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
@@ -13,6 +13,12 @@ type JwtPayload = {
 export class SetsController {
   constructor(private readonly setsService: SetsService) {}
 
+  @Get()
+  @UseGuards(AuthGuard)
+  async listSets(@CurrentUser() user: JwtPayload) {
+    return this.setsService.listSetsForUser(user.user_id);
+  }
+
   @Post()
   @UseGuards(AuthGuard)
   async createSet(
@@ -24,6 +30,15 @@ export class SetsController {
       dto.emailId,
       dto.phoneId,
     );
+  }
+
+  @Delete(':setId')
+  @UseGuards(AuthGuard)
+  async deleteSet(
+    @Param('setId', ParseIntPipe) setId: number,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.setsService.deleteSetForUser(user.user_id, setId);
   }
 }
 

@@ -7,11 +7,15 @@ import { EmailPhoneSet } from './email-phone-set.entity';
 import { SetsService } from './sets.service';
 import { SetsController } from './sets.controller';
 import { AuthModule } from '../auth/auth.module';
+import { EmailsModule } from '../emails/emails.module';
+import { GmailModule } from '../gmail/gmail.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([User, Email, Phone, EmailPhoneSet]),
     AuthModule,
+    EmailsModule,
+    GmailModule,
   ],
   controllers: [SetsController],
   providers: [SetsService],
