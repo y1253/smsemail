@@ -27,7 +27,7 @@ let SetsController = class SetsController {
         return this.setsService.listSetsForUser(user.user_id);
     }
     async createSet(dto, user) {
-        return this.setsService.createSetForUser(user.user_id, dto.emailId, dto.phoneId);
+        return this.setsService.createSetForUser(user.user_id, dto.emailId, dto.phoneId, dto.promoCode);
     }
     async deleteSet(setId, user) {
         return this.setsService.deleteSetForUser(user.user_id, setId);

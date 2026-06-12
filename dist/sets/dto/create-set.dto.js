@@ -14,6 +14,7 @@ const class_validator_1 = require("class-validator");
 class CreateSetDto {
     phoneId;
     emailId;
+    promoCode;
 }
 exports.CreateSetDto = CreateSetDto;
 __decorate([
@@ -26,4 +27,9 @@ __decorate([
     (0, class_validator_1.IsNotEmpty)(),
     __metadata("design:type", Number)
 ], CreateSetDto.prototype, "emailId", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsString)(),
+    __metadata("design:type", String)
+], CreateSetDto.prototype, "promoCode", void 0);
 //# sourceMappingURL=create-set.dto.js.map

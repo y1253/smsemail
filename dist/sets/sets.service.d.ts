@@ -32,7 +32,7 @@ export declare class SetsService {
     deleteSetForUser(userId: number, setId: number): Promise<{
         deleted: true;
     }>;
-    createSetForUser(userId: number, emailId: number, phoneId: number): Promise<{
+    createSetForUser(userId: number, emailId: number, phoneId: number, promoCode?: string): Promise<{
         setId: number;
     }>;
 }

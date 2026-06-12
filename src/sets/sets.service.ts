@@ -81,6 +81,7 @@ export class SetsService {
     userId: number,
     emailId: number,
     phoneId: number,
+    promoCode?: string,
   ): Promise<{ setId: number }> {
     const user = await this.userRepo.findOne({ where: { userId } });
     if (!user) {
@@ -103,6 +104,13 @@ export class SetsService {
       throw new BadRequestException('Phone not found for this user');
     }
 
+    const validPromo = this.config.get<string>('PROMO_CODE');
+    const promoValid = !!promoCode && promoCode === validPromo;
+
+    if (!promoValid && !user.stripeCustomerId) {
+      throw new BadRequestException('Add a payment method before creating a set');
+    }
+
     const now = new Date();
 
     const existing = await this.setRepo.findOne({
@@ -110,28 +118,32 @@ export class SetsService {
       relations: ['email', 'phone'],
     });
 
-    if (!user.stripeCustomerId) {
-      throw new BadRequestException('Add a payment method before creating a set');
+    let subscriptionId: string;
+
+    if (promoValid) {
+      subscriptionId = 'PROMO';
+    } else {
+      const priceId = this.config.get<string>('STRIPE_PRICE_ID');
+      if (!priceId) throw new Error('STRIPE_PRICE_ID is not set');
+
+      const subscription = await this.stripe.subscriptions.create({
+        customer: user.stripeCustomerId!,
+        items: [{ price: priceId }],
+      });
+      subscriptionId = subscription.id;
     }
-
-    const priceId = this.config.get<string>('STRIPE_PRICE_ID');
-    if (!priceId) throw new Error('STRIPE_PRICE_ID is not set');
-
-    const subscription = await this.stripe.subscriptions.create({
-      customer: user.stripeCustomerId,
-      items: [{ price: priceId }],
-    });
 
     if (existing) {
       if (existing.deletedAt) {
         existing.deletedAt = null;
         existing.createdAt = now;
-        existing.stripeSubscriptionId = subscription.id;
+        existing.stripeSubscriptionId = subscriptionId;
         await this.setRepo.save(existing);
         return { setId: existing.setId };
       }
-      // Cancel the just-created subscription before throwing
-      await this.stripe.subscriptions.cancel(subscription.id);
+      if (!promoValid) {
+        await this.stripe.subscriptions.cancel(subscriptionId);
+      }
       throw new BadRequestException('Set already exists for this email and phone');
     }
 
@@ -140,7 +152,7 @@ export class SetsService {
       phone,
       createdAt: now,
       deletedAt: null,
-      stripeSubscriptionId: subscription.id,
+      stripeSubscriptionId: subscriptionId,
     });
 
     const saved = await this.setRepo.save(set);

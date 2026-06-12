@@ -1,4 +1,4 @@
-import { IsInt, IsNotEmpty } from 'class-validator';
+import { IsInt, IsNotEmpty, IsOptional, IsString } from 'class-validator';
 
 export class CreateSetDto {
   @IsInt()
@@ -8,5 +8,9 @@ export class CreateSetDto {
   @IsInt()
   @IsNotEmpty()
   emailId!: number;
+
+  @IsOptional()
+  @IsString()
+  promoCode?: string;
 }
 

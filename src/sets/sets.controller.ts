@@ -29,6 +29,7 @@ export class SetsController {
       user.user_id,
       dto.emailId,
       dto.phoneId,
+      dto.promoCode,
     );
   }
 

@@ -91,7 +91,7 @@ let SetsService = SetsService_1 = class SetsService {
         await this.setRepo.save(set);
         return { deleted: true };
     }
-    async createSetForUser(userId, emailId, phoneId) {
+    async createSetForUser(userId, emailId, phoneId, promoCode) {
         const user = await this.userRepo.findOne({ where: { userId } });
         if (!user) {
             throw new common_1.BadRequestException('User not found');
@@ -110,30 +110,41 @@ let SetsService = SetsService_1 = class SetsService {
         if (!phone) {
             throw new common_1.BadRequestException('Phone not found for this user');
         }
+        const validPromo = this.config.get('PROMO_CODE');
+        const promoValid = !!promoCode && promoCode === validPromo;
+        if (!promoValid && !user.stripeCustomerId) {
+            throw new common_1.BadRequestException('Add a payment method before creating a set');
+        }
         const now = new Date();
         const existing = await this.setRepo.findOne({
             where: { email: { emailId }, phone: { phoneId } },
             relations: ['email', 'phone'],
         });
-        if (!user.stripeCustomerId) {
-            throw new common_1.BadRequestException('Add a payment method before creating a set');
+        let subscriptionId;
+        if (promoValid) {
+            subscriptionId = 'PROMO';
         }
-        const priceId = this.config.get('STRIPE_PRICE_ID');
-        if (!priceId)
-            throw new Error('STRIPE_PRICE_ID is not set');
-        const subscription = await this.stripe.subscriptions.create({
-            customer: user.stripeCustomerId,
-            items: [{ price: priceId }],
-        });
+        else {
+            const priceId = this.config.get('STRIPE_PRICE_ID');
+            if (!priceId)
+                throw new Error('STRIPE_PRICE_ID is not set');
+            const subscription = await this.stripe.subscriptions.create({
+                customer: user.stripeCustomerId,
+                items: [{ price: priceId }],
+            });
+            subscriptionId = subscription.id;
+        }
         if (existing) {
             if (existing.deletedAt) {
                 existing.deletedAt = null;
                 existing.createdAt = now;
-                existing.stripeSubscriptionId = subscription.id;
+                existing.stripeSubscriptionId = subscriptionId;
                 await this.setRepo.save(existing);
                 return { setId: existing.setId };
             }
-            await this.stripe.subscriptions.cancel(subscription.id);
+            if (!promoValid) {
+                await this.stripe.subscriptions.cancel(subscriptionId);
+            }
             throw new common_1.BadRequestException('Set already exists for this email and phone');
         }
         const set = this.setRepo.create({
@@ -141,7 +152,7 @@ let SetsService = SetsService_1 = class SetsService {
             phone,
             createdAt: now,
             deletedAt: null,
-            stripeSubscriptionId: subscription.id,
+            stripeSubscriptionId: subscriptionId,
         });
         const saved = await this.setRepo.save(set);
         return { setId: saved.setId };
