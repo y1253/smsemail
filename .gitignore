@@ -1,5 +1,5 @@
 # compiled output
-/dist
+# /dist is committed to git for deployment (server has insufficient RAM to build)
 /node_modules
 /build
 

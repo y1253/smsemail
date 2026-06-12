@@ -1,0 +1,30 @@
+import { Repository } from 'typeorm';
+import { ConfigService } from '@nestjs/config';
+import { Email } from '../emails/email.entity';
+import { Phone } from '../phones/phone.entity';
+import { EmailPhoneSet } from '../sets/email-phone-set.entity';
+import { IncomeMessage } from '../messages/income-message.entity';
+import { EmailsService } from '../emails/emails.service';
+import { GmailService } from '../gmail/gmail.service';
+import { OpenAiService } from '../openai/openai.service';
+import { SignalwireService } from '../signalwire/signalwire.service';
+export declare class WebhooksService {
+    private readonly emailRepo;
+    private readonly phoneRepo;
+    private readonly setRepo;
+    private readonly incomeMessageRepo;
+    private readonly config;
+    private readonly emailsService;
+    private readonly gmailService;
+    private readonly openAiService;
+    private readonly signalwireService;
+    private readonly logger;
+    private readonly stripe;
+    constructor(emailRepo: Repository<Email>, phoneRepo: Repository<Phone>, setRepo: Repository<EmailPhoneSet>, incomeMessageRepo: Repository<IncomeMessage>, config: ConfigService, emailsService: EmailsService, gmailService: GmailService, openAiService: OpenAiService, signalwireService: SignalwireService);
+    handleGmailPush(payload: Record<string, any>): Promise<void>;
+    handleInboundSms(from: string, body: string): Promise<void>;
+    handleStripeWebhook(rawBody: Buffer, sig: string): Promise<void>;
+    renewExpiringWatches(): Promise<void>;
+    private summaryBudget;
+    private buildSms;
+}
