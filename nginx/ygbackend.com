@@ -1,6 +1,6 @@
 server {
     listen 80;
-    server_name ygbackend.com www.ygbackend.com;
+    server_name ygbackend.com;
 
     root /var/www/html;
     location /.well-known/acme-challenge/ { try_files $uri =404; }
@@ -9,7 +9,7 @@ server {
 
 server {
     listen 443 ssl;
-    server_name ygbackend.com www.ygbackend.com;
+    server_name ygbackend.com;
 
     ssl_certificate     /etc/letsencrypt/live/ygbackend.com/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/ygbackend.com/privkey.pem;

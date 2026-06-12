@@ -25,7 +25,7 @@ ln -sf /etc/nginx/sites-available/"$DOMAIN" /etc/nginx/sites-enabled/"$DOMAIN"
 cat > /etc/nginx/sites-available/"$DOMAIN" << 'HTTPEOF'
 server {
     listen 80;
-    server_name ygbackend.com www.ygbackend.com;
+    server_name ygbackend.com;
     root /var/www/html;
     location /.well-known/acme-challenge/ { try_files $uri =404; }
     location / { return 200 'ok'; add_header Content-Type text/plain; }
@@ -38,7 +38,7 @@ systemctl restart nginx
 
 echo "▶ Obtaining SSL certificate via webroot..."
 certbot certonly --webroot -w /var/www/html \
-  -d "$DOMAIN" -d "www.$DOMAIN" \
+  -d "$DOMAIN" \
   --non-interactive --agree-tos -m "$EMAIL"
 
 echo "▶ Applying full nginx config with SSL..."
