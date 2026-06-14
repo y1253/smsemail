@@ -35,4 +35,5 @@ export declare class SetsService {
     createSetForUser(userId: number, emailId: number, phoneId: number, promoCode?: string): Promise<{
         setId: number;
     }>;
+    private refreshGmailWatch;
 }

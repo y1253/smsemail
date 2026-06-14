@@ -140,6 +140,7 @@ let SetsService = SetsService_1 = class SetsService {
                 existing.createdAt = now;
                 existing.stripeSubscriptionId = subscriptionId;
                 await this.setRepo.save(existing);
+                await this.refreshGmailWatch(email);
                 return { setId: existing.setId };
             }
             if (!promoValid) {
@@ -155,7 +156,20 @@ let SetsService = SetsService_1 = class SetsService {
             stripeSubscriptionId: subscriptionId,
         });
         const saved = await this.setRepo.save(set);
+        await this.refreshGmailWatch(email);
         return { setId: saved.setId };
+    }
+    async refreshGmailWatch(email) {
+        try {
+            const refreshToken = this.emailsService.decrypt(email.refreshToken);
+            const { historyId, expiry } = await this.gmailService.watchGmail(refreshToken);
+            email.lastHistoryId = historyId;
+            email.watchExpiry = expiry;
+            await this.emailRepo.save(email);
+        }
+        catch (err) {
+            this.logger.error(`Failed to re-watch Gmail for email ${email.emailId}: ${err}`);
+        }
     }
 };
 exports.SetsService = SetsService;

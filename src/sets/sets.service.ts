@@ -139,6 +139,7 @@ export class SetsService {
         existing.createdAt = now;
         existing.stripeSubscriptionId = subscriptionId;
         await this.setRepo.save(existing);
+        await this.refreshGmailWatch(email);
         return { setId: existing.setId };
       }
       if (!promoValid) {
@@ -156,7 +157,20 @@ export class SetsService {
     });
 
     const saved = await this.setRepo.save(set);
+    await this.refreshGmailWatch(email);
     return { setId: saved.setId };
+  }
+
+  private async refreshGmailWatch(email: Email): Promise<void> {
+    try {
+      const refreshToken = this.emailsService.decrypt(email.refreshToken);
+      const { historyId, expiry } = await this.gmailService.watchGmail(refreshToken);
+      email.lastHistoryId = historyId;
+      email.watchExpiry = expiry;
+      await this.emailRepo.save(email);
+    } catch (err) {
+      this.logger.error(`Failed to re-watch Gmail for email ${email.emailId}: ${err}`);
+    }
   }
 }
 
