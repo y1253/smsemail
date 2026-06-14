@@ -72,7 +72,7 @@ let SetsService = SetsService_1 = class SetsService {
         if (!set || set.email.user.userId !== userId) {
             throw new common_1.BadRequestException('Set not found for this user');
         }
-        if (set.stripeSubscriptionId) {
+        if (set.stripeSubscriptionId && set.stripeSubscriptionId !== 'PROMO') {
             try {
                 await this.stripe.subscriptions.cancel(set.stripeSubscriptionId);
             }

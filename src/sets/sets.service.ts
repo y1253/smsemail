@@ -57,7 +57,7 @@ export class SetsService {
       throw new BadRequestException('Set not found for this user');
     }
 
-    if (set.stripeSubscriptionId) {
+    if (set.stripeSubscriptionId && set.stripeSubscriptionId !== 'PROMO') {
       try {
         await this.stripe.subscriptions.cancel(set.stripeSubscriptionId);
       } catch (err) {
