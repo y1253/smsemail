@@ -15,16 +15,19 @@ export class OpenAiService implements OnModuleInit {
   }
 
   async summarize(body: string, budget: number): Promise<string> {
+    const trimmed = body.trim();
+    if (trimmed.length <= budget) return trimmed;
+
     const response = await this.client.chat.completions.create({
       model: 'gpt-4o-mini',
       messages: [
         {
           role: 'system',
-          content: `Summarize the email in ${budget} characters or fewer. Be concise. No filler words. Return only the summary.`,
+          content: `You are a summarizer. Compress the following email body to ${budget} characters or fewer. Use only information present in the email — do not add, infer, or invent anything. Return only the compressed text, nothing else.`,
         },
         {
           role: 'user',
-          content: body.slice(0, 4000),
+          content: trimmed.slice(0, 4000),
         },
       ],
       max_tokens: 100,
