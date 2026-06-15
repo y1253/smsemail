@@ -21,6 +21,7 @@ const phones_module_1 = require("./phones/phones.module");
 const sets_module_1 = require("./sets/sets.module");
 const webhooks_module_1 = require("./webhooks/webhooks.module");
 const openai_module_1 = require("./openai/openai.module");
+const admin_module_1 = require("./admin/admin.module");
 let AppModule = class AppModule {
 };
 exports.AppModule = AppModule;
@@ -38,6 +39,7 @@ exports.AppModule = AppModule = __decorate([
             sets_module_1.SetsModule,
             webhooks_module_1.WebhooksModule,
             openai_module_1.OpenAiModule,
+            admin_module_1.AdminModule,
         ],
         controllers: [app_controller_1.AppController],
         providers: [app_service_1.AppService],

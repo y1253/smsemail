@@ -12,6 +12,7 @@ import { PhonesModule } from './phones/phones.module';
 import { SetsModule } from './sets/sets.module';
 import { WebhooksModule } from './webhooks/webhooks.module';
 import { OpenAiModule } from './openai/openai.module';
+import { AdminModule } from './admin/admin.module';
 
 @Module({
   imports: [
@@ -26,6 +27,7 @@ import { OpenAiModule } from './openai/openai.module';
     SetsModule,
     WebhooksModule,
     OpenAiModule,
+    AdminModule,
   ],
   controllers: [AppController],
   providers: [AppService],
