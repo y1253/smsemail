@@ -81,7 +81,8 @@ let WebhooksService = WebhooksService_1 = class WebhooksService {
                 continue;
             try {
                 const msg = await this.gmailService.fetchMessage(refreshToken, raw.id);
-                if (!msg.labels.includes('CATEGORY_PRIMARY') && !msg.labels.includes('IMPORTANT'))
+                const isJunk = msg.labels.some((l) => ['CATEGORY_PROMOTIONS', 'CATEGORY_SOCIAL', 'CATEGORY_UPDATES', 'CATEGORY_FORUMS'].includes(l));
+                if (isJunk)
                     continue;
                 const budget = this.summaryBudget(msg.sender, msg.subject, msg.attachmentCount);
                 const summary = await this.openAiService.summarize(msg.body, budget);
