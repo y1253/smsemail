@@ -5,6 +5,7 @@ import {
   Header,
   Headers,
   HttpCode,
+  Logger,
   Post,
   Req,
 } from '@nestjs/common';
@@ -12,6 +13,8 @@ import { WebhooksService } from './webhooks.service';
 
 @Controller('webhooks')
 export class WebhooksController {
+  private readonly logger = new Logger(WebhooksController.name);
+
   constructor(private readonly webhooksService: WebhooksService) {}
 
   @Post('gmail')
@@ -23,12 +26,15 @@ export class WebhooksController {
   @Post('signalwire')
   @HttpCode(200)
   @Header('Content-Type', 'text/xml')
-  async signalwireInbound(
-    @Body('From') from: string,
-    @Body('Body') body: string,
-  ): Promise<string> {
+  async signalwireInbound(@Body() payload: Record<string, any>): Promise<string> {
+    this.logger.debug(`SignalWire inbound payload: ${JSON.stringify(payload)}`);
+    // Accept both TwiML-style (From/Body) and SWML-style (from/body) field names
+    const from: string = payload['From'] ?? payload['from'] ?? '';
+    const body: string = payload['Body'] ?? payload['body'] ?? '';
     if (from && body !== undefined) {
       await this.webhooksService.handleInboundSms(from, body);
+    } else {
+      this.logger.warn(`SignalWire webhook missing from/body — raw payload: ${JSON.stringify(payload)}`);
     }
     return '<?xml version="1.0" encoding="UTF-8"?><Response></Response>';
   }

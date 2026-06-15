@@ -11,21 +11,29 @@ var __metadata = (this && this.__metadata) || function (k, v) {
 var __param = (this && this.__param) || function (paramIndex, decorator) {
     return function (target, key) { decorator(target, key, paramIndex); }
 };
+var WebhooksController_1;
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.WebhooksController = void 0;
 const common_1 = require("@nestjs/common");
 const webhooks_service_1 = require("./webhooks.service");
-let WebhooksController = class WebhooksController {
+let WebhooksController = WebhooksController_1 = class WebhooksController {
     webhooksService;
+    logger = new common_1.Logger(WebhooksController_1.name);
     constructor(webhooksService) {
         this.webhooksService = webhooksService;
     }
     async gmailPush(payload) {
         await this.webhooksService.handleGmailPush(payload);
     }
-    async signalwireInbound(from, body) {
+    async signalwireInbound(payload) {
+        this.logger.debug(`SignalWire inbound payload: ${JSON.stringify(payload)}`);
+        const from = payload['From'] ?? payload['from'] ?? '';
+        const body = payload['Body'] ?? payload['body'] ?? '';
         if (from && body !== undefined) {
             await this.webhooksService.handleInboundSms(from, body);
+        }
+        else {
+            this.logger.warn(`SignalWire webhook missing from/body — raw payload: ${JSON.stringify(payload)}`);
         }
         return '<?xml version="1.0" encoding="UTF-8"?><Response></Response>';
     }
@@ -49,10 +57,9 @@ __decorate([
     (0, common_1.Post)('signalwire'),
     (0, common_1.HttpCode)(200),
     (0, common_1.Header)('Content-Type', 'text/xml'),
-    __param(0, (0, common_1.Body)('From')),
-    __param(1, (0, common_1.Body)('Body')),
+    __param(0, (0, common_1.Body)()),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [String, String]),
+    __metadata("design:paramtypes", [Object]),
     __metadata("design:returntype", Promise)
 ], WebhooksController.prototype, "signalwireInbound", null);
 __decorate([
@@ -64,7 +71,7 @@ __decorate([
     __metadata("design:paramtypes", [Object, String]),
     __metadata("design:returntype", Promise)
 ], WebhooksController.prototype, "stripeWebhook", null);
-exports.WebhooksController = WebhooksController = __decorate([
+exports.WebhooksController = WebhooksController = WebhooksController_1 = __decorate([
     (0, common_1.Controller)('webhooks'),
     __metadata("design:paramtypes", [webhooks_service_1.WebhooksService])
 ], WebhooksController);
