@@ -65,7 +65,7 @@ export class WebhooksService {
       try {
         const msg = await this.gmailService.fetchMessage(refreshToken, raw.id);
         const isJunk = msg.labels.some((l) =>
-          ['CATEGORY_PROMOTIONS', 'CATEGORY_SOCIAL', 'CATEGORY_UPDATES', 'CATEGORY_FORUMS'].includes(l),
+          ['CATEGORY_PROMOTIONS', 'CATEGORY_SOCIAL', 'CATEGORY_UPDATES', 'CATEGORY_FORUMS', 'SENT'].includes(l),
         );
         if (isJunk) continue;
 
@@ -153,8 +153,13 @@ export class WebhooksService {
           await this.gmailService.sendEmail(refreshToken, senderAddress, to, 'Message from SMS', msgBody);
           await this.signalwireService.sendSms(from, `Sent to ${to}`);
         }
+      } else if (/^HELP$/i.test(trimmed)) {
+        await this.signalwireService.sendSms(
+          from,
+          'Commands:\nR 0001 msg - reply to msg #0001\nR msg - reply to latest email\nS to@x.com msg - send email\nS to@x.com|subject|msg - with custom subject',
+        );
       } else {
-        await this.signalwireService.sendSms(from, 'Unknown command. Use R to reply or S to send.');
+        await this.signalwireService.sendSms(from, 'Unknown command. Use R to reply, S to send, or HELP for instructions.');
       }
     } catch (err) {
       this.logger.error(`Inbound SMS error from ${from}: ${err}`);
@@ -244,7 +249,8 @@ export class WebhooksService {
     attachmentCount: number,
     messageId: number,
   ): string {
-    const footer = attachmentCount > 0 ? `📎+${attachmentCount}  |  #${messageId}` : `#${messageId}`;
+    const idStr = String(messageId).padStart(4, '0');
+    const footer = attachmentCount > 0 ? `📎+${attachmentCount}  |  #${idStr}` : `#${idStr}`;
     const s = sender.slice(0, 35);
     const sub = subject.slice(0, 40);
     return `From: ${s}\nRe: ${sub}\n\n${summary}\n\n${footer}`.slice(0, 160);

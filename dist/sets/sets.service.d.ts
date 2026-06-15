@@ -6,6 +6,7 @@ import { Phone } from '../phones/phone.entity';
 import { EmailPhoneSet } from './email-phone-set.entity';
 import { EmailsService } from '../emails/emails.service';
 import { GmailService } from '../gmail/gmail.service';
+import { SignalwireService } from '../signalwire/signalwire.service';
 export declare class SetsService {
     private readonly userRepo;
     private readonly emailRepo;
@@ -14,9 +15,10 @@ export declare class SetsService {
     private readonly config;
     private readonly emailsService;
     private readonly gmailService;
+    private readonly signalwireService;
     private readonly stripe;
     private readonly logger;
-    constructor(userRepo: Repository<User>, emailRepo: Repository<Email>, phoneRepo: Repository<Phone>, setRepo: Repository<EmailPhoneSet>, config: ConfigService, emailsService: EmailsService, gmailService: GmailService);
+    constructor(userRepo: Repository<User>, emailRepo: Repository<Email>, phoneRepo: Repository<Phone>, setRepo: Repository<EmailPhoneSet>, config: ConfigService, emailsService: EmailsService, gmailService: GmailService, signalwireService: SignalwireService);
     listSetsForUser(userId: number): Promise<{
         setId: number;
         createdAt: Date;

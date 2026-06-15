@@ -28,6 +28,7 @@ const phone_entity_1 = require("../phones/phone.entity");
 const email_phone_set_entity_1 = require("./email-phone-set.entity");
 const emails_service_1 = require("../emails/emails.service");
 const gmail_service_1 = require("../gmail/gmail.service");
+const signalwire_service_1 = require("../signalwire/signalwire.service");
 let SetsService = SetsService_1 = class SetsService {
     userRepo;
     emailRepo;
@@ -36,9 +37,10 @@ let SetsService = SetsService_1 = class SetsService {
     config;
     emailsService;
     gmailService;
+    signalwireService;
     stripe;
     logger = new common_1.Logger(SetsService_1.name);
-    constructor(userRepo, emailRepo, phoneRepo, setRepo, config, emailsService, gmailService) {
+    constructor(userRepo, emailRepo, phoneRepo, setRepo, config, emailsService, gmailService, signalwireService) {
         this.userRepo = userRepo;
         this.emailRepo = emailRepo;
         this.phoneRepo = phoneRepo;
@@ -46,6 +48,7 @@ let SetsService = SetsService_1 = class SetsService {
         this.config = config;
         this.emailsService = emailsService;
         this.gmailService = gmailService;
+        this.signalwireService = signalwireService;
         const key = this.config.get('STRIPE_TEST_KEY');
         if (!key)
             throw new Error('STRIPE_TEST_KEY is not set');
@@ -141,6 +144,7 @@ let SetsService = SetsService_1 = class SetsService {
                 existing.stripeSubscriptionId = subscriptionId;
                 await this.setRepo.save(existing);
                 await this.refreshGmailWatch(email);
+                await this.signalwireService.sendSms(phone.phone, 'Welcome! Your emails will be forwarded here as SMS summaries.\nText HELP anytime to see available commands.');
                 return { setId: existing.setId };
             }
             if (!promoValid) {
@@ -157,6 +161,7 @@ let SetsService = SetsService_1 = class SetsService {
         });
         const saved = await this.setRepo.save(set);
         await this.refreshGmailWatch(email);
+        await this.signalwireService.sendSms(phone.phone, 'Welcome! Your emails will be forwarded here as SMS summaries.\nText HELP anytime to see available commands.');
         return { setId: saved.setId };
     }
     async refreshGmailWatch(email) {
@@ -185,6 +190,7 @@ exports.SetsService = SetsService = SetsService_1 = __decorate([
         typeorm_2.Repository,
         config_1.ConfigService,
         emails_service_1.EmailsService,
-        gmail_service_1.GmailService])
+        gmail_service_1.GmailService,
+        signalwire_service_1.SignalwireService])
 ], SetsService);
 //# sourceMappingURL=sets.service.js.map

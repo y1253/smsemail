@@ -9,6 +9,7 @@ import { Phone } from '../phones/phone.entity';
 import { EmailPhoneSet } from './email-phone-set.entity';
 import { EmailsService } from '../emails/emails.service';
 import { GmailService } from '../gmail/gmail.service';
+import { SignalwireService } from '../signalwire/signalwire.service';
 
 @Injectable()
 export class SetsService {
@@ -27,6 +28,7 @@ export class SetsService {
     private readonly config: ConfigService,
     private readonly emailsService: EmailsService,
     private readonly gmailService: GmailService,
+    private readonly signalwireService: SignalwireService,
   ) {
     const key = this.config.get<string>('STRIPE_TEST_KEY');
     if (!key) throw new Error('STRIPE_TEST_KEY is not set');
@@ -140,6 +142,10 @@ export class SetsService {
         existing.stripeSubscriptionId = subscriptionId;
         await this.setRepo.save(existing);
         await this.refreshGmailWatch(email);
+        await this.signalwireService.sendSms(
+          phone.phone,
+          'Welcome! Your emails will be forwarded here as SMS summaries.\nText HELP anytime to see available commands.',
+        );
         return { setId: existing.setId };
       }
       if (!promoValid) {
@@ -158,6 +164,10 @@ export class SetsService {
 
     const saved = await this.setRepo.save(set);
     await this.refreshGmailWatch(email);
+    await this.signalwireService.sendSms(
+      phone.phone,
+      'Welcome! Your emails will be forwarded here as SMS summaries.\nText HELP anytime to see available commands.',
+    );
     return { setId: saved.setId };
   }
 
