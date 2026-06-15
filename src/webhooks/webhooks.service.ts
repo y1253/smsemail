@@ -96,8 +96,9 @@ export class WebhooksService {
   }
 
   async handleInboundSms(from: string, body: string): Promise<void> {
+    const normalizedFrom = from.startsWith('+') ? from.slice(1) : from;
     const phone = await this.phoneRepo.findOne({
-      where: { phone: from, deletedAt: IsNull() },
+      where: { phone: normalizedFrom, deletedAt: IsNull() },
     });
     if (!phone) {
       await this.signalwireService.sendSms(from, 'No active account found for this number.');

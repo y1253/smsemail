@@ -108,8 +108,9 @@ let WebhooksService = WebhooksService_1 = class WebhooksService {
         await this.emailRepo.save(email);
     }
     async handleInboundSms(from, body) {
+        const normalizedFrom = from.startsWith('+') ? from.slice(1) : from;
         const phone = await this.phoneRepo.findOne({
-            where: { phone: from, deletedAt: (0, typeorm_2.IsNull)() },
+            where: { phone: normalizedFrom, deletedAt: (0, typeorm_2.IsNull)() },
         });
         if (!phone) {
             await this.signalwireService.sendSms(from, 'No active account found for this number.');
