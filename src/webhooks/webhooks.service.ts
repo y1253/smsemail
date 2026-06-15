@@ -40,37 +40,43 @@ export class WebhooksService {
 
   async handleGmailPush(payload: Record<string, any>): Promise<void> {
     const encoded = payload?.message?.data as string | undefined;
-    if (!encoded) return;
+    if (!encoded) { this.logger.log('Gmail push: no data'); return; }
 
     const { emailAddress, historyId: newHistoryId } = JSON.parse(
       Buffer.from(encoded, 'base64').toString('utf-8'),
     ) as { emailAddress: string; historyId: number | string };
 
+    this.logger.log(`Gmail push for ${emailAddress}, historyId=${newHistoryId}`);
+
     const email = await this.emailRepo.findOne({
       where: { email: emailAddress, deletedAt: IsNull() },
     });
-    if (!email?.lastHistoryId) return;
+    if (!email?.lastHistoryId) { this.logger.log(`No email record found for ${emailAddress}`); return; }
 
     const refreshToken = this.emailsService.decrypt(email.refreshToken);
     const rawMessages = await this.gmailService.getNewMessages(refreshToken, email.lastHistoryId);
+    this.logger.log(`Found ${rawMessages.length} new messages since historyId ${email.lastHistoryId}`);
 
     const activeSets = await this.setRepo.find({
       where: { email: { emailId: email.emailId }, deletedAt: IsNull() },
       relations: ['phone'],
     });
-    if (!activeSets.length) return;
+    if (!activeSets.length) { this.logger.log('No active sets for this email'); return; }
 
     for (const raw of rawMessages) {
       if (!raw.id) continue;
       try {
         const msg = await this.gmailService.fetchMessage(refreshToken, raw.id);
+        this.logger.log(`Message ${raw.id}: labels=${msg.labels.join(',')}`);
         const isJunk = msg.labels.some((l) =>
           ['CATEGORY_PROMOTIONS', 'CATEGORY_SOCIAL', 'CATEGORY_UPDATES', 'CATEGORY_FORUMS'].includes(l),
         );
-        if (isJunk) continue;
+        if (isJunk) { this.logger.log(`Skipping junk message ${raw.id}`); continue; }
 
         const budget = this.summaryBudget(msg.sender, msg.subject, msg.attachmentCount);
+        this.logger.log(`Summarizing message ${raw.id}, budget=${budget}`);
         const summary = await this.openAiService.summarize(msg.body, budget);
+        this.logger.log(`Summary ready, sending SMS to ${activeSets.length} set(s)`);
 
         const record = this.incomeMessageRepo.create({
           email,
