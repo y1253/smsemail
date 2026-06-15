@@ -28,9 +28,10 @@ export class WebhooksController {
   @Header('Content-Type', 'text/xml')
   async signalwireInbound(@Body() payload: Record<string, any>): Promise<string> {
     this.logger.debug(`SignalWire inbound payload: ${JSON.stringify(payload)}`);
-    // Accept both TwiML-style (From/Body) and SWML-style (from/body) field names
-    const from: string = payload['From'] ?? payload['from'] ?? '';
-    const body: string = payload['Body'] ?? payload['body'] ?? '';
+    // TwiML: top-level From/Body; SWML: nested under payload.message.from/body
+    const msg = payload['message'] ?? {};
+    const from: string = payload['From'] ?? payload['from'] ?? msg['from'] ?? '';
+    const body: string = payload['Body'] ?? payload['body'] ?? msg['body'] ?? '';
     if (from && body !== undefined) {
       await this.webhooksService.handleInboundSms(from, body);
     } else {

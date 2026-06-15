@@ -27,8 +27,9 @@ let WebhooksController = WebhooksController_1 = class WebhooksController {
     }
     async signalwireInbound(payload) {
         this.logger.debug(`SignalWire inbound payload: ${JSON.stringify(payload)}`);
-        const from = payload['From'] ?? payload['from'] ?? '';
-        const body = payload['Body'] ?? payload['body'] ?? '';
+        const msg = payload['message'] ?? {};
+        const from = payload['From'] ?? payload['from'] ?? msg['from'] ?? '';
+        const body = payload['Body'] ?? payload['body'] ?? msg['body'] ?? '';
         if (from && body !== undefined) {
             await this.webhooksService.handleInboundSms(from, body);
         }
