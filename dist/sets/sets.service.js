@@ -130,12 +130,18 @@ let SetsService = SetsService_1 = class SetsService {
         else {
             const priceId = this.config.get('STRIPE_PRICE_ID');
             if (!priceId)
-                throw new Error('STRIPE_PRICE_ID is not set');
-            const subscription = await this.stripe.subscriptions.create({
-                customer: user.stripeCustomerId,
-                items: [{ price: priceId }],
-            });
-            subscriptionId = subscription.id;
+                throw new common_1.BadRequestException('Billing is not configured (STRIPE_PRICE_ID missing)');
+            try {
+                const subscription = await this.stripe.subscriptions.create({
+                    customer: user.stripeCustomerId,
+                    items: [{ price: priceId }],
+                });
+                subscriptionId = subscription.id;
+            }
+            catch (err) {
+                this.logger.error(`Stripe subscription create failed: ${err}`);
+                throw new common_1.BadRequestException(err?.raw?.message ?? 'Failed to start subscription — check your payment method');
+            }
         }
         if (existing) {
             if (existing.deletedAt) {

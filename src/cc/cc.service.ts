@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -8,6 +8,7 @@ import { User } from '../users/user.entity';
 @Injectable()
 export class CcService {
   private stripe: Stripe;
+  private readonly logger = new Logger(CcService.name);
 
   constructor(
     @InjectRepository(User)
@@ -39,13 +40,17 @@ export class CcService {
       customerId = customer.id;
     }
 
-    await this.stripe.paymentMethods.attach(paymentMethodId, {
-      customer: customerId,
-    });
-
-    await this.stripe.customers.update(customerId, {
-      invoice_settings: { default_payment_method: paymentMethodId },
-    });
+    try {
+      await this.stripe.paymentMethods.attach(paymentMethodId, {
+        customer: customerId,
+      });
+      await this.stripe.customers.update(customerId, {
+        invoice_settings: { default_payment_method: paymentMethodId },
+      });
+    } catch (err: any) {
+      this.logger.error(`Stripe attach failed: ${err}`);
+      throw new BadRequestException(err?.raw?.message ?? 'Failed to save card');
+    }
 
     if (!user.stripeCustomerId) {
       user.stripeCustomerId = customerId;

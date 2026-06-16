@@ -14,6 +14,7 @@ var __param = (this && this.__param) || function (paramIndex, decorator) {
 var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
+var CcService_1;
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.CcService = void 0;
 const common_1 = require("@nestjs/common");
@@ -22,10 +23,11 @@ const typeorm_1 = require("@nestjs/typeorm");
 const typeorm_2 = require("typeorm");
 const stripe_1 = __importDefault(require("stripe"));
 const user_entity_1 = require("../users/user.entity");
-let CcService = class CcService {
+let CcService = CcService_1 = class CcService {
     userRepo;
     config;
     stripe;
+    logger = new common_1.Logger(CcService_1.name);
     constructor(userRepo, config) {
         this.userRepo = userRepo;
         this.config = config;
@@ -49,12 +51,18 @@ let CcService = class CcService {
             });
             customerId = customer.id;
         }
-        await this.stripe.paymentMethods.attach(paymentMethodId, {
-            customer: customerId,
-        });
-        await this.stripe.customers.update(customerId, {
-            invoice_settings: { default_payment_method: paymentMethodId },
-        });
+        try {
+            await this.stripe.paymentMethods.attach(paymentMethodId, {
+                customer: customerId,
+            });
+            await this.stripe.customers.update(customerId, {
+                invoice_settings: { default_payment_method: paymentMethodId },
+            });
+        }
+        catch (err) {
+            this.logger.error(`Stripe attach failed: ${err}`);
+            throw new common_1.BadRequestException(err?.raw?.message ?? 'Failed to save card');
+        }
         if (!user.stripeCustomerId) {
             user.stripeCustomerId = customerId;
             await this.userRepo.save(user);
@@ -95,7 +103,7 @@ let CcService = class CcService {
     }
 };
 exports.CcService = CcService;
-exports.CcService = CcService = __decorate([
+exports.CcService = CcService = CcService_1 = __decorate([
     (0, common_1.Injectable)(),
     __param(0, (0, typeorm_1.InjectRepository)(user_entity_1.User)),
     __metadata("design:paramtypes", [typeorm_2.Repository,

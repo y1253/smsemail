@@ -5,6 +5,7 @@ export declare class CcService {
     private readonly userRepo;
     private readonly config;
     private stripe;
+    private readonly logger;
     constructor(userRepo: Repository<User>, config: ConfigService);
     attachPaymentMethodForUser(userId: number, paymentMethodId: string): Promise<{
         stripeCustomerId: string;
