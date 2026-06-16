@@ -81,9 +81,11 @@ let WebhooksService = WebhooksService_1 = class WebhooksService {
                 continue;
             try {
                 const msg = await this.gmailService.fetchMessage(refreshToken, raw.id);
-                const isJunk = msg.labels.some((l) => ['CATEGORY_PROMOTIONS', 'CATEGORY_SOCIAL', 'CATEGORY_UPDATES', 'CATEGORY_FORUMS', 'SENT'].includes(l));
-                if (isJunk)
+                const isJunk = msg.labels.some((l) => ['CATEGORY_PROMOTIONS', 'CATEGORY_SOCIAL', 'CATEGORY_FORUMS', 'SENT'].includes(l));
+                if (isJunk) {
+                    this.logger.debug(`Skipping message ${raw.id} (labels: ${msg.labels.join(', ')})`);
                     continue;
+                }
                 const budget = this.summaryBudget(msg.sender, msg.subject, msg.attachmentCount);
                 const summary = await this.openAiService.summarize(msg.body, budget);
                 const record = this.incomeMessageRepo.create({
