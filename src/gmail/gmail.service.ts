@@ -168,10 +168,16 @@ export class GmailService {
   private stripQuotedText(body: string): string {
     const lines = body.split('\n');
     const result: string[] = [];
+    let prevStartedWithOn = false;
     for (const line of lines) {
-      if (/^On .+wrote:$/s.test(line.trim())) break;
-      if (/^[-_]{4,}/.test(line.trim())) break;
-      if (line.trimStart().startsWith('>')) continue;
+      const trimmed = line.trim();
+      if (/^[-_]{4,}/.test(trimmed)) break;
+      if (line.trimStart().startsWith('>')) { prevStartedWithOn = false; continue; }
+      // Multi-line "On ... wrote:" — previous line started with "On" and this ends with "wrote:"
+      if (prevStartedWithOn && /wrote:\s*$/.test(trimmed)) { result.pop(); break; }
+      // Single-line "On ... wrote:"
+      if (/^On .+wrote:\s*$/.test(trimmed)) break;
+      prevStartedWithOn = /^On /.test(trimmed);
       result.push(line);
     }
     return result.join('\n').trim();

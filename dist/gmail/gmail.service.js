@@ -123,13 +123,22 @@ let GmailService = class GmailService {
     stripQuotedText(body) {
         const lines = body.split('\n');
         const result = [];
+        let prevStartedWithOn = false;
         for (const line of lines) {
-            if (/^On .+wrote:$/s.test(line.trim()))
+            const trimmed = line.trim();
+            if (/^[-_]{4,}/.test(trimmed))
                 break;
-            if (/^[-_]{4,}/.test(line.trim()))
-                break;
-            if (line.trimStart().startsWith('>'))
+            if (line.trimStart().startsWith('>')) {
+                prevStartedWithOn = false;
                 continue;
+            }
+            if (prevStartedWithOn && /wrote:\s*$/.test(trimmed)) {
+                result.pop();
+                break;
+            }
+            if (/^On .+wrote:\s*$/.test(trimmed))
+                break;
+            prevStartedWithOn = /^On /.test(trimmed);
             result.push(line);
         }
         return result.join('\n').trim();

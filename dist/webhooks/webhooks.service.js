@@ -86,7 +86,7 @@ let WebhooksService = WebhooksService_1 = class WebhooksService {
                     this.logger.debug(`Skipping message ${raw.id} (labels: ${msg.labels.join(', ')})`);
                     continue;
                 }
-                const budget = this.summaryBudget(msg.sender, msg.subject, msg.attachmentCount);
+                const budget = this.summaryBudget(msg.sender, msg.subject, msg.attachmentCount, email.email);
                 const summary = await this.openAiService.summarize(msg.body, budget);
                 const record = this.incomeMessageRepo.create({
                     email,
@@ -97,7 +97,7 @@ let WebhooksService = WebhooksService_1 = class WebhooksService {
                     subject: msg.subject.slice(0, 255),
                 });
                 const saved = await this.incomeMessageRepo.save(record);
-                const sms = this.buildSms(msg.sender, msg.subject, summary, msg.attachmentCount, saved.messageId);
+                const sms = this.buildSms(msg.sender, msg.subject, summary, msg.attachmentCount, saved.messageId, email.email);
                 for (const set of activeSets) {
                     await this.signalwireService.sendSms(set.phone.phone, sms);
                 }
@@ -172,7 +172,7 @@ let WebhooksService = WebhooksService_1 = class WebhooksService {
                 }
             }
             else if (/^HELP$/i.test(trimmed)) {
-                await this.signalwireService.sendSms(from, 'Commands:\nR 0001 msg - reply to msg #0001\nR msg - reply to latest email\nS to@x.com msg - send email\nS to@x.com|subject|msg - with custom subject');
+                await this.signalwireService.sendSms(from, 'Email SMS Commands:\nR <msg> - reply to your latest email\nR <#1234> <msg> - reply to email #1234\nS <email> <msg> - send new email\nS <email>|<subject>|<msg> - send with custom subject\n(The #number at end of each notification is the email ID)');
             }
             else {
                 await this.signalwireService.sendSms(from, 'Unknown command. Use R to reply, S to send, or HELP for instructions.');
@@ -243,17 +243,22 @@ let WebhooksService = WebhooksService_1 = class WebhooksService {
             }
         }
     }
-    summaryBudget(sender, subject, attachmentCount) {
-        const senderLen = Math.min(sender.length, 35);
-        const subjectLen = Math.min(subject.length, 40);
-        return Math.max(10, 160 - 15 - senderLen - subjectLen - 20);
+    summaryBudget(sender, subject, attachmentCount, toEmail) {
+        const cleanSender = sender.replace(/<[^>]+>/g, '').trim();
+        const cleanSubject = subject.replace(/^(re:\s*)*/i, '').replace(/<[^>]+>/g, '').trim();
+        const senderLen = Math.min(cleanSender.length, 30);
+        const subjectLen = Math.min(cleanSubject.length, 35);
+        const emailLen = Math.min(toEmail.length, 30);
+        return Math.max(10, 160 - 22 - emailLen - senderLen - subjectLen - 15);
     }
-    buildSms(sender, subject, summary, attachmentCount, messageId) {
+    buildSms(sender, subject, summary, attachmentCount, messageId, toEmail) {
         const idStr = String(messageId).padStart(4, '0');
         const footer = attachmentCount > 0 ? `📎+${attachmentCount}  |  #${idStr}` : `#${idStr}`;
-        const s = sender.slice(0, 35);
-        const sub = subject.slice(0, 40);
-        return `From: ${s}\nRe: ${sub}\n\n${summary}\n\n${footer}`.slice(0, 160);
+        const s = sender.replace(/<[^>]+>/g, '').trim().slice(0, 30);
+        const cleanSubject = subject.replace(/^(re:\s*)*/i, '').replace(/<[^>]+>/g, '').trim();
+        const sub = cleanSubject.slice(0, 35);
+        const to = toEmail.slice(0, 30);
+        return `To: ${to}\nFrom: ${s}\nSubj: ${sub}\n\n${summary}\n\n${footer}`.slice(0, 160);
     }
 };
 exports.WebhooksService = WebhooksService;

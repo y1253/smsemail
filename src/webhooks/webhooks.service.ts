@@ -72,7 +72,7 @@ export class WebhooksService {
           continue;
         }
 
-        const budget = this.summaryBudget(msg.sender, msg.subject, msg.attachmentCount);
+        const budget = this.summaryBudget(msg.sender, msg.subject, msg.attachmentCount, email.email);
         const summary = await this.openAiService.summarize(msg.body, budget);
 
         const record = this.incomeMessageRepo.create({
@@ -85,7 +85,7 @@ export class WebhooksService {
         });
         const saved = await this.incomeMessageRepo.save(record);
 
-        const sms = this.buildSms(msg.sender, msg.subject, summary, msg.attachmentCount, saved.messageId);
+        const sms = this.buildSms(msg.sender, msg.subject, summary, msg.attachmentCount, saved.messageId, email.email);
         for (const set of activeSets) {
           await this.signalwireService.sendSms(set.phone.phone, sms);
         }
@@ -159,7 +159,7 @@ export class WebhooksService {
       } else if (/^HELP$/i.test(trimmed)) {
         await this.signalwireService.sendSms(
           from,
-          'Commands:\nR 0001 msg - reply to msg #0001\nR msg - reply to latest email\nS to@x.com msg - send email\nS to@x.com|subject|msg - with custom subject',
+          'Email SMS Commands:\nR <msg> - reply to your latest email\nR <#1234> <msg> - reply to email #1234\nS <email> <msg> - send new email\nS <email>|<subject>|<msg> - send with custom subject\n(The #number at end of each notification is the email ID)',
         );
       } else {
         await this.signalwireService.sendSms(from, 'Unknown command. Use R to reply, S to send, or HELP for instructions.');
@@ -238,11 +238,14 @@ export class WebhooksService {
     }
   }
 
-  private summaryBudget(sender: string, subject: string, attachmentCount: number): number {
-    const senderLen = Math.min(sender.length, 35);
-    const subjectLen = Math.min(subject.length, 40);
-    // Fixed structure chars: "From: \nRe: \n\n\n\n" = 15; footer reserve = 20
-    return Math.max(10, 160 - 15 - senderLen - subjectLen - 20);
+  private summaryBudget(sender: string, subject: string, attachmentCount: number, toEmail: string): number {
+    const cleanSender = sender.replace(/<[^>]+>/g, '').trim();
+    const cleanSubject = subject.replace(/^(re:\s*)*/i, '').replace(/<[^>]+>/g, '').trim();
+    const senderLen = Math.min(cleanSender.length, 30);
+    const subjectLen = Math.min(cleanSubject.length, 35);
+    const emailLen = Math.min(toEmail.length, 30);
+    // Structure: "To: \nFrom: \nSubj: \n\n\n\n" = 22 chars; footer reserve = 15
+    return Math.max(10, 160 - 22 - emailLen - senderLen - subjectLen - 15);
   }
 
   private buildSms(
@@ -251,11 +254,14 @@ export class WebhooksService {
     summary: string,
     attachmentCount: number,
     messageId: number,
+    toEmail: string,
   ): string {
     const idStr = String(messageId).padStart(4, '0');
     const footer = attachmentCount > 0 ? `📎+${attachmentCount}  |  #${idStr}` : `#${idStr}`;
-    const s = sender.slice(0, 35);
-    const sub = subject.slice(0, 40);
-    return `From: ${s}\nRe: ${sub}\n\n${summary}\n\n${footer}`.slice(0, 160);
+    const s = sender.replace(/<[^>]+>/g, '').trim().slice(0, 30);
+    const cleanSubject = subject.replace(/^(re:\s*)*/i, '').replace(/<[^>]+>/g, '').trim();
+    const sub = cleanSubject.slice(0, 35);
+    const to = toEmail.slice(0, 30);
+    return `To: ${to}\nFrom: ${s}\nSubj: ${sub}\n\n${summary}\n\n${footer}`.slice(0, 160);
   }
 }
