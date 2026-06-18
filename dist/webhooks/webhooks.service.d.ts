@@ -25,6 +25,7 @@ export declare class WebhooksService {
     handleInboundSms(from: string, body: string): Promise<void>;
     handleStripeWebhook(rawBody: Buffer, sig: string): Promise<void>;
     renewExpiringWatches(): Promise<void>;
+    private formatSender;
     private summaryBudget;
     private buildSms;
 }

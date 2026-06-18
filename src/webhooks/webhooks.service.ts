@@ -238,10 +238,19 @@ export class WebhooksService {
     }
   }
 
+  private formatSender(raw: string): string {
+    const match = raw.match(/^(.*?)\s*<([^>]+)>$/);
+    if (match) {
+      const name = match[1].trim();
+      const email = match[2].trim();
+      return name ? `${name} ${email}` : email;
+    }
+    return raw.trim();
+  }
+
   private summaryBudget(sender: string, subject: string, attachmentCount: number, toEmail: string): number {
-    const cleanSender = sender.replace(/<[^>]+>/g, '').trim();
     const cleanSubject = subject.replace(/^(re:\s*)*/i, '').replace(/<[^>]+>/g, '').trim();
-    const senderLen = Math.min(cleanSender.length, 30);
+    const senderLen = Math.min(this.formatSender(sender).length, 40);
     const subjectLen = Math.min(cleanSubject.length, 35);
     const emailLen = Math.min(toEmail.length, 30);
     // Structure: "To: \nFrom: \nSubj: \n\n\n\n" = 22 chars; footer reserve = 15
@@ -258,7 +267,7 @@ export class WebhooksService {
   ): string {
     const idStr = String(messageId).padStart(4, '0');
     const footer = attachmentCount > 0 ? `📎+${attachmentCount}  |  #${idStr}` : `#${idStr}`;
-    const s = sender.replace(/<[^>]+>/g, '').trim().slice(0, 30);
+    const s = this.formatSender(sender).slice(0, 40);
     const cleanSubject = subject.replace(/^(re:\s*)*/i, '').replace(/<[^>]+>/g, '').trim();
     const sub = cleanSubject.slice(0, 35);
     const to = toEmail.slice(0, 30);
