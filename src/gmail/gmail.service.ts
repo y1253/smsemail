@@ -99,7 +99,7 @@ export class GmailService {
       (p) => p.filename && p.filename.length > 0,
     ).length;
 
-    const body = this.extractBody(msg.data.payload);
+    const body = this.stripQuotedText(this.extractBody(msg.data.payload));
 
     return {
       gmailMessageId: msg.data.id!,
@@ -163,6 +163,18 @@ export class GmailService {
     }
 
     return '';
+  }
+
+  private stripQuotedText(body: string): string {
+    const lines = body.split('\n');
+    const result: string[] = [];
+    for (const line of lines) {
+      if (/^On .+wrote:$/s.test(line.trim())) break;
+      if (/^[-_]{4,}/.test(line.trim())) break;
+      if (line.trimStart().startsWith('>')) continue;
+      result.push(line);
+    }
+    return result.join('\n').trim();
   }
 
   private buildRaw(from: string, to: string, subject: string, body: string): string {

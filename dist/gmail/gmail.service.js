@@ -77,7 +77,7 @@ let GmailService = class GmailService {
         const subject = getHeader('Subject');
         const labels = msg.data.labelIds ?? [];
         const attachmentCount = (msg.data.payload?.parts ?? []).filter((p) => p.filename && p.filename.length > 0).length;
-        const body = this.extractBody(msg.data.payload);
+        const body = this.stripQuotedText(this.extractBody(msg.data.payload));
         return {
             gmailMessageId: msg.data.id,
             gmailThreadId: msg.data.threadId,
@@ -119,6 +119,20 @@ let GmailService = class GmailService {
                 return text;
         }
         return '';
+    }
+    stripQuotedText(body) {
+        const lines = body.split('\n');
+        const result = [];
+        for (const line of lines) {
+            if (/^On .+wrote:$/s.test(line.trim()))
+                break;
+            if (/^[-_]{4,}/.test(line.trim()))
+                break;
+            if (line.trimStart().startsWith('>'))
+                continue;
+            result.push(line);
+        }
+        return result.join('\n').trim();
     }
     buildRaw(from, to, subject, body) {
         const lines = [

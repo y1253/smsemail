@@ -81,7 +81,7 @@ let WebhooksService = WebhooksService_1 = class WebhooksService {
                 continue;
             try {
                 const msg = await this.gmailService.fetchMessage(refreshToken, raw.id);
-                const isJunk = msg.labels.some((l) => ['CATEGORY_PROMOTIONS', 'CATEGORY_SOCIAL', 'CATEGORY_FORUMS', 'SENT'].includes(l));
+                const isJunk = msg.labels.some((l) => ['CATEGORY_PROMOTIONS', 'CATEGORY_SOCIAL', 'CATEGORY_FORUMS', 'SENT', 'DRAFT'].includes(l));
                 if (isJunk) {
                     this.logger.debug(`Skipping message ${raw.id} (labels: ${msg.labels.join(', ')})`);
                     continue;
