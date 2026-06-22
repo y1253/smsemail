@@ -4,6 +4,7 @@ import { User } from '../users/user.entity';
 import { Email } from '../emails/email.entity';
 import { Phone } from '../phones/phone.entity';
 import { EmailPhoneSet } from './email-phone-set.entity';
+import { SetAllowedSender } from './set-allowed-sender.entity';
 import { EmailsService } from '../emails/emails.service';
 import { GmailService } from '../gmail/gmail.service';
 import { SignalwireService } from '../signalwire/signalwire.service';
@@ -12,13 +13,14 @@ export declare class SetsService {
     private readonly emailRepo;
     private readonly phoneRepo;
     private readonly setRepo;
+    private readonly senderRepo;
     private readonly config;
     private readonly emailsService;
     private readonly gmailService;
     private readonly signalwireService;
     private readonly stripe;
     private readonly logger;
-    constructor(userRepo: Repository<User>, emailRepo: Repository<Email>, phoneRepo: Repository<Phone>, setRepo: Repository<EmailPhoneSet>, config: ConfigService, emailsService: EmailsService, gmailService: GmailService, signalwireService: SignalwireService);
+    constructor(userRepo: Repository<User>, emailRepo: Repository<Email>, phoneRepo: Repository<Phone>, setRepo: Repository<EmailPhoneSet>, senderRepo: Repository<SetAllowedSender>, config: ConfigService, emailsService: EmailsService, gmailService: GmailService, signalwireService: SignalwireService);
     listSetsForUser(userId: number): Promise<{
         setId: number;
         createdAt: Date;
@@ -36,6 +38,9 @@ export declare class SetsService {
     }>;
     createSetForUser(userId: number, emailId: number, phoneId: number, promoCode?: string): Promise<{
         setId: number;
+    }>;
+    updateSenders(userId: number, setId: number, senders: string[]): Promise<{
+        updated: true;
     }>;
     private refreshGmailWatch;
 }

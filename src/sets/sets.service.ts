@@ -7,6 +7,7 @@ import { User } from '../users/user.entity';
 import { Email } from '../emails/email.entity';
 import { Phone } from '../phones/phone.entity';
 import { EmailPhoneSet } from './email-phone-set.entity';
+import { SetAllowedSender } from './set-allowed-sender.entity';
 import { EmailsService } from '../emails/emails.service';
 import { GmailService } from '../gmail/gmail.service';
 import { SignalwireService } from '../signalwire/signalwire.service';
@@ -25,6 +26,8 @@ export class SetsService {
     private readonly phoneRepo: Repository<Phone>,
     @InjectRepository(EmailPhoneSet)
     private readonly setRepo: Repository<EmailPhoneSet>,
+    @InjectRepository(SetAllowedSender)
+    private readonly senderRepo: Repository<SetAllowedSender>,
     private readonly config: ConfigService,
     private readonly emailsService: EmailsService,
     private readonly gmailService: GmailService,
@@ -174,6 +177,24 @@ export class SetsService {
       'Welcome! Your emails will be forwarded here as SMS summaries.\nText HELP anytime to see available commands.',
     );
     return { setId: saved.setId };
+  }
+
+  async updateSenders(userId: number, setId: number, senders: string[]): Promise<{ updated: true }> {
+    const set = await this.setRepo.findOne({
+      where: { setId, deletedAt: IsNull() },
+      relations: ['email', 'email.user'],
+    });
+    if (!set || set.email.user.userId !== userId) {
+      throw new BadRequestException('Set not found for this user');
+    }
+    await this.senderRepo.delete({ set: { setId } });
+    if (senders.length > 0) {
+      const rows = senders.map((email) =>
+        this.senderRepo.create({ set, email: email.toLowerCase().trim() }),
+      );
+      await this.senderRepo.save(rows);
+    }
+    return { updated: true };
   }
 
   private async refreshGmailWatch(email: Email): Promise<void> {

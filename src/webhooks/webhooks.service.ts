@@ -56,7 +56,7 @@ export class WebhooksService {
 
     const activeSets = await this.setRepo.find({
       where: { email: { emailId: email.emailId }, deletedAt: IsNull() },
-      relations: ['phone'],
+      relations: ['phone', 'allowedSenders'],
     });
     if (!activeSets.length) return;
 
@@ -86,7 +86,10 @@ export class WebhooksService {
         const saved = await this.incomeMessageRepo.save(record);
 
         const sms = this.buildSms(msg.sender, msg.subject, summary, msg.attachmentCount, saved.messageId, email.email);
+        const senderAddr = this.extractEmailAddress(msg.sender);
         for (const set of activeSets) {
+          const filter = set.allowedSenders ?? [];
+          if (filter.length > 0 && !filter.some((s) => s.email === senderAddr)) continue;
           await this.signalwireService.sendSms(set.phone.phone, sms);
         }
       } catch (err) {
@@ -236,6 +239,11 @@ export class WebhooksService {
         this.logger.error(`Failed to renew Gmail watch for email ${email.emailId}: ${err}`);
       }
     }
+  }
+
+  private extractEmailAddress(sender: string): string {
+    const match = sender.match(/<([^>]+)>/);
+    return (match ? match[1] : sender).trim().toLowerCase();
   }
 
   private formatSender(raw: string): string {

@@ -12,6 +12,7 @@ const typeorm_1 = require("@nestjs/typeorm");
 const email_entity_1 = require("../emails/email.entity");
 const phone_entity_1 = require("../phones/phone.entity");
 const email_phone_set_entity_1 = require("../sets/email-phone-set.entity");
+const set_allowed_sender_entity_1 = require("../sets/set-allowed-sender.entity");
 const income_message_entity_1 = require("../messages/income-message.entity");
 const emails_module_1 = require("../emails/emails.module");
 const gmail_module_1 = require("../gmail/gmail.module");
@@ -24,7 +25,7 @@ exports.WebhooksModule = WebhooksModule;
 exports.WebhooksModule = WebhooksModule = __decorate([
     (0, common_1.Module)({
         imports: [
-            typeorm_1.TypeOrmModule.forFeature([email_entity_1.Email, phone_entity_1.Phone, email_phone_set_entity_1.EmailPhoneSet, income_message_entity_1.IncomeMessage]),
+            typeorm_1.TypeOrmModule.forFeature([email_entity_1.Email, phone_entity_1.Phone, email_phone_set_entity_1.EmailPhoneSet, set_allowed_sender_entity_1.SetAllowedSender, income_message_entity_1.IncomeMessage]),
             emails_module_1.EmailsModule,
             gmail_module_1.GmailModule,
             openai_module_1.OpenAiModule,

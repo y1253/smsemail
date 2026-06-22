@@ -3,10 +3,12 @@ import {
   PrimaryGeneratedColumn,
   Column,
   ManyToOne,
+  OneToMany,
   JoinColumn,
 } from 'typeorm';
 import { Email } from '../emails/email.entity';
 import { Phone } from '../phones/phone.entity';
+import { SetAllowedSender } from './set-allowed-sender.entity';
 
 @Entity('email_phone_set')
 export class EmailPhoneSet {
@@ -29,5 +31,8 @@ export class EmailPhoneSet {
 
   @Column({ name: 'stripe_subscription_id', type: 'varchar', length: 100, nullable: true })
   stripeSubscriptionId!: string | null;
+
+  @OneToMany(() => SetAllowedSender, (s) => s.set, { eager: false })
+  allowedSenders!: SetAllowedSender[];
 }
 

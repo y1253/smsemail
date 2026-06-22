@@ -26,6 +26,7 @@ const user_entity_1 = require("../users/user.entity");
 const email_entity_1 = require("../emails/email.entity");
 const phone_entity_1 = require("../phones/phone.entity");
 const email_phone_set_entity_1 = require("./email-phone-set.entity");
+const set_allowed_sender_entity_1 = require("./set-allowed-sender.entity");
 const emails_service_1 = require("../emails/emails.service");
 const gmail_service_1 = require("../gmail/gmail.service");
 const signalwire_service_1 = require("../signalwire/signalwire.service");
@@ -34,17 +35,19 @@ let SetsService = SetsService_1 = class SetsService {
     emailRepo;
     phoneRepo;
     setRepo;
+    senderRepo;
     config;
     emailsService;
     gmailService;
     signalwireService;
     stripe;
     logger = new common_1.Logger(SetsService_1.name);
-    constructor(userRepo, emailRepo, phoneRepo, setRepo, config, emailsService, gmailService, signalwireService) {
+    constructor(userRepo, emailRepo, phoneRepo, setRepo, senderRepo, config, emailsService, gmailService, signalwireService) {
         this.userRepo = userRepo;
         this.emailRepo = emailRepo;
         this.phoneRepo = phoneRepo;
         this.setRepo = setRepo;
+        this.senderRepo = senderRepo;
         this.config = config;
         this.emailsService = emailsService;
         this.gmailService = gmailService;
@@ -170,6 +173,21 @@ let SetsService = SetsService_1 = class SetsService {
         await this.signalwireService.sendSms(phone.phone, 'Welcome! Your emails will be forwarded here as SMS summaries.\nText HELP anytime to see available commands.');
         return { setId: saved.setId };
     }
+    async updateSenders(userId, setId, senders) {
+        const set = await this.setRepo.findOne({
+            where: { setId, deletedAt: (0, typeorm_2.IsNull)() },
+            relations: ['email', 'email.user'],
+        });
+        if (!set || set.email.user.userId !== userId) {
+            throw new common_1.BadRequestException('Set not found for this user');
+        }
+        await this.senderRepo.delete({ set: { setId } });
+        if (senders.length > 0) {
+            const rows = senders.map((email) => this.senderRepo.create({ set, email: email.toLowerCase().trim() }));
+            await this.senderRepo.save(rows);
+        }
+        return { updated: true };
+    }
     async refreshGmailWatch(email) {
         try {
             const refreshToken = this.emailsService.decrypt(email.refreshToken);
@@ -190,7 +208,9 @@ exports.SetsService = SetsService = SetsService_1 = __decorate([
     __param(1, (0, typeorm_1.InjectRepository)(email_entity_1.Email)),
     __param(2, (0, typeorm_1.InjectRepository)(phone_entity_1.Phone)),
     __param(3, (0, typeorm_1.InjectRepository)(email_phone_set_entity_1.EmailPhoneSet)),
+    __param(4, (0, typeorm_1.InjectRepository)(set_allowed_sender_entity_1.SetAllowedSender)),
     __metadata("design:paramtypes", [typeorm_2.Repository,
+        typeorm_2.Repository,
         typeorm_2.Repository,
         typeorm_2.Repository,
         typeorm_2.Repository,

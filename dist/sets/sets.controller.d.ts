@@ -1,5 +1,6 @@
 import { SetsService } from './sets.service';
 import { CreateSetDto } from './dto/create-set.dto';
+import { UpdateSendersDto } from './dto/update-senders.dto';
 type JwtPayload = {
     user_id: number;
     email: string;
@@ -24,6 +25,9 @@ export declare class SetsController {
     }>;
     deleteSet(setId: number, user: JwtPayload): Promise<{
         deleted: true;
+    }>;
+    updateSenders(setId: number, dto: UpdateSendersDto, user: JwtPayload): Promise<{
+        updated: true;
     }>;
 }
 export {};

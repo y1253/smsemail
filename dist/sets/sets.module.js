@@ -13,6 +13,7 @@ const user_entity_1 = require("../users/user.entity");
 const email_entity_1 = require("../emails/email.entity");
 const phone_entity_1 = require("../phones/phone.entity");
 const email_phone_set_entity_1 = require("./email-phone-set.entity");
+const set_allowed_sender_entity_1 = require("./set-allowed-sender.entity");
 const sets_service_1 = require("./sets.service");
 const sets_controller_1 = require("./sets.controller");
 const auth_module_1 = require("../auth/auth.module");
@@ -24,7 +25,7 @@ exports.SetsModule = SetsModule;
 exports.SetsModule = SetsModule = __decorate([
     (0, common_1.Module)({
         imports: [
-            typeorm_1.TypeOrmModule.forFeature([user_entity_1.User, email_entity_1.Email, phone_entity_1.Phone, email_phone_set_entity_1.EmailPhoneSet]),
+            typeorm_1.TypeOrmModule.forFeature([user_entity_1.User, email_entity_1.Email, phone_entity_1.Phone, email_phone_set_entity_1.EmailPhoneSet, set_allowed_sender_entity_1.SetAllowedSender]),
             auth_module_1.AuthModule,
             emails_module_1.EmailsModule,
             gmail_module_1.GmailModule,

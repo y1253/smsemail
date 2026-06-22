@@ -13,6 +13,7 @@ exports.EmailPhoneSet = void 0;
 const typeorm_1 = require("typeorm");
 const email_entity_1 = require("../emails/email.entity");
 const phone_entity_1 = require("../phones/phone.entity");
+const set_allowed_sender_entity_1 = require("./set-allowed-sender.entity");
 let EmailPhoneSet = class EmailPhoneSet {
     setId;
     email;
@@ -20,6 +21,7 @@ let EmailPhoneSet = class EmailPhoneSet {
     createdAt;
     deletedAt;
     stripeSubscriptionId;
+    allowedSenders;
 };
 exports.EmailPhoneSet = EmailPhoneSet;
 __decorate([
@@ -48,6 +50,10 @@ __decorate([
     (0, typeorm_1.Column)({ name: 'stripe_subscription_id', type: 'varchar', length: 100, nullable: true }),
     __metadata("design:type", Object)
 ], EmailPhoneSet.prototype, "stripeSubscriptionId", void 0);
+__decorate([
+    (0, typeorm_1.OneToMany)(() => set_allowed_sender_entity_1.SetAllowedSender, (s) => s.set, { eager: false }),
+    __metadata("design:type", Array)
+], EmailPhoneSet.prototype, "allowedSenders", void 0);
 exports.EmailPhoneSet = EmailPhoneSet = __decorate([
     (0, typeorm_1.Entity)('email_phone_set')
 ], EmailPhoneSet);

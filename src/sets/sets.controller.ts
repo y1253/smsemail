@@ -1,8 +1,9 @@
-import { Body, Controller, Delete, Get, Param, ParseIntPipe, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, ParseIntPipe, Post, Put, UseGuards } from '@nestjs/common';
 import { SetsService } from './sets.service';
 import { AuthGuard } from '../auth/auth.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { CreateSetDto } from './dto/create-set.dto';
+import { UpdateSendersDto } from './dto/update-senders.dto';
 
 type JwtPayload = {
   user_id: number;
@@ -40,6 +41,16 @@ export class SetsController {
     @CurrentUser() user: JwtPayload,
   ) {
     return this.setsService.deleteSetForUser(user.user_id, setId);
+  }
+
+  @Put(':setId/senders')
+  @UseGuards(AuthGuard)
+  async updateSenders(
+    @Param('setId', ParseIntPipe) setId: number,
+    @Body() dto: UpdateSendersDto,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.setsService.updateSenders(user.user_id, setId, dto.senders);
   }
 }
 

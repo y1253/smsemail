@@ -18,6 +18,7 @@ const sets_service_1 = require("./sets.service");
 const auth_guard_1 = require("../auth/auth.guard");
 const current_user_decorator_1 = require("../auth/current-user.decorator");
 const create_set_dto_1 = require("./dto/create-set.dto");
+const update_senders_dto_1 = require("./dto/update-senders.dto");
 let SetsController = class SetsController {
     setsService;
     constructor(setsService) {
@@ -31,6 +32,9 @@ let SetsController = class SetsController {
     }
     async deleteSet(setId, user) {
         return this.setsService.deleteSetForUser(user.user_id, setId);
+    }
+    async updateSenders(setId, dto, user) {
+        return this.setsService.updateSenders(user.user_id, setId, dto.senders);
     }
 };
 exports.SetsController = SetsController;
@@ -60,6 +64,16 @@ __decorate([
     __metadata("design:paramtypes", [Number, Object]),
     __metadata("design:returntype", Promise)
 ], SetsController.prototype, "deleteSet", null);
+__decorate([
+    (0, common_1.Put)(':setId/senders'),
+    (0, common_1.UseGuards)(auth_guard_1.AuthGuard),
+    __param(0, (0, common_1.Param)('setId', common_1.ParseIntPipe)),
+    __param(1, (0, common_1.Body)()),
+    __param(2, (0, current_user_decorator_1.CurrentUser)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Number, update_senders_dto_1.UpdateSendersDto, Object]),
+    __metadata("design:returntype", Promise)
+], SetsController.prototype, "updateSenders", null);
 exports.SetsController = SetsController = __decorate([
     (0, common_1.Controller)('sets'),
     __metadata("design:paramtypes", [sets_service_1.SetsService])

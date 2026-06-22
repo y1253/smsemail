@@ -11,6 +11,7 @@ import { OutMessage } from '../messages/out-message.entity';
 import { IncomeMessage } from '../messages/income-message.entity';
 import { Subscription } from '../subscriptions/subscription.entity';
 import { EmailPhoneSet } from '../sets/email-phone-set.entity';
+import { SetAllowedSender } from '../sets/set-allowed-sender.entity';
 
 @Module({
   imports: [
@@ -23,7 +24,7 @@ import { EmailPhoneSet } from '../sets/email-phone-set.entity';
       password: '12345',
       database: 'smsemail',
       synchronize: true,
-      entities: [User, Email, Phone, PhoneVerification, Transaction, Subscription, IncomeMessage, OutMessage, EmailPhoneSet],
+      entities: [User, Email, Phone, PhoneVerification, Transaction, Subscription, IncomeMessage, OutMessage, EmailPhoneSet, SetAllowedSender],
 
     }),
   ],
