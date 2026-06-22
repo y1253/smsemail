@@ -13,6 +13,7 @@ exports.GmailService = void 0;
 const common_1 = require("@nestjs/common");
 const config_1 = require("@nestjs/config");
 const googleapis_1 = require("googleapis");
+const html_to_text_1 = require("html-to-text");
 let GmailService = class GmailService {
     config;
     constructor(config) {
@@ -110,15 +111,33 @@ let GmailService = class GmailService {
     extractBody(payload) {
         if (!payload)
             return '';
-        if (payload.mimeType === 'text/plain' && payload.body?.data) {
-            return Buffer.from(payload.body.data, 'base64').toString('utf-8');
+        const plainData = this.findPartData(payload, 'text/plain');
+        if (plainData) {
+            return Buffer.from(plainData, 'base64').toString('utf-8');
         }
-        for (const part of payload.parts ?? []) {
-            const text = this.extractBody(part);
-            if (text)
-                return text;
+        const htmlData = this.findPartData(payload, 'text/html');
+        if (htmlData) {
+            const rawHtml = Buffer.from(htmlData, 'base64').toString('utf-8');
+            return (0, html_to_text_1.convert)(rawHtml, {
+                wordwrap: false,
+                selectors: [
+                    { selector: 'a', options: { ignoreHref: true } },
+                    { selector: 'img', format: 'skip' },
+                ],
+            });
         }
         return '';
+    }
+    findPartData(payload, mimeType) {
+        if (payload.mimeType === mimeType && payload.body?.data) {
+            return payload.body.data;
+        }
+        for (const part of payload.parts ?? []) {
+            const found = this.findPartData(part, mimeType);
+            if (found)
+                return found;
+        }
+        return null;
     }
     stripQuotedText(body) {
         const lines = body.split('\n');

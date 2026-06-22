@@ -22,6 +22,7 @@ export declare class GmailService {
     sendReply(refreshToken: string, threadId: string, to: string, subject: string, body: string, from: string): Promise<void>;
     sendEmail(refreshToken: string, from: string, to: string, subject: string, body: string): Promise<void>;
     private extractBody;
+    private findPartData;
     private stripQuotedText;
     private buildRaw;
 }

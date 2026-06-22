@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { google, gmail_v1 } from 'googleapis';
+import { convert } from 'html-to-text';
 
 @Injectable()
 export class GmailService {
@@ -153,16 +154,38 @@ export class GmailService {
   private extractBody(payload: gmail_v1.Schema$MessagePart | undefined): string {
     if (!payload) return '';
 
-    if (payload.mimeType === 'text/plain' && payload.body?.data) {
-      return Buffer.from(payload.body.data, 'base64').toString('utf-8');
+    const plainData = this.findPartData(payload, 'text/plain');
+    if (plainData) {
+      return Buffer.from(plainData, 'base64').toString('utf-8');
     }
 
-    for (const part of payload.parts ?? []) {
-      const text = this.extractBody(part);
-      if (text) return text;
+    const htmlData = this.findPartData(payload, 'text/html');
+    if (htmlData) {
+      const rawHtml = Buffer.from(htmlData, 'base64').toString('utf-8');
+      return convert(rawHtml, {
+        wordwrap: false,
+        selectors: [
+          { selector: 'a', options: { ignoreHref: true } },
+          { selector: 'img', format: 'skip' },
+        ],
+      });
     }
 
     return '';
+  }
+
+  private findPartData(
+    payload: gmail_v1.Schema$MessagePart,
+    mimeType: string,
+  ): string | null {
+    if (payload.mimeType === mimeType && payload.body?.data) {
+      return payload.body.data;
+    }
+    for (const part of payload.parts ?? []) {
+      const found = this.findPartData(part, mimeType);
+      if (found) return found;
+    }
+    return null;
   }
 
   private stripQuotedText(body: string): string {
