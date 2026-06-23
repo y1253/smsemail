@@ -8,5 +8,6 @@ export declare class EmailPhoneSet {
     createdAt: Date;
     deletedAt: Date | null;
     stripeSubscriptionId: string | null;
+    pendingCancelAt: Date | null;
     allowedSenders: SetAllowedSender[];
 }

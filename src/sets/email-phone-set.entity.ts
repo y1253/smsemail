@@ -32,6 +32,9 @@ export class EmailPhoneSet {
   @Column({ name: 'stripe_subscription_id', type: 'varchar', length: 100, nullable: true })
   stripeSubscriptionId!: string | null;
 
+  @Column({ name: 'pending_cancel_at', type: 'datetime', nullable: true })
+  pendingCancelAt!: Date | null;
+
   @OneToMany(() => SetAllowedSender, (s) => s.set, { eager: false })
   allowedSenders!: SetAllowedSender[];
 }

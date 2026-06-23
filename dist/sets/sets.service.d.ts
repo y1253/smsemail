@@ -24,6 +24,7 @@ export declare class SetsService {
     listSetsForUser(userId: number): Promise<{
         setId: number;
         createdAt: Date;
+        pendingCancelAt: Date | null;
         email: {
             emailId: number;
             email: string;
@@ -32,12 +33,17 @@ export declare class SetsService {
             phoneId: number;
             phone: string;
         };
+        allowedSenders: string[];
+        stripeSubscriptionId: string | null;
     }[]>;
     deleteSetForUser(userId: number, setId: number): Promise<{
         deleted: true;
     }>;
     createSetForUser(userId: number, emailId: number, phoneId: number, promoCode?: string): Promise<{
         setId: number;
+    }>;
+    cancelSetSubscription(userId: number, setId: number): Promise<{
+        cancelAt: Date;
     }>;
     updateSenders(userId: number, setId: number, senders: string[]): Promise<{
         updated: true;

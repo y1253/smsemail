@@ -21,6 +21,7 @@ let EmailPhoneSet = class EmailPhoneSet {
     createdAt;
     deletedAt;
     stripeSubscriptionId;
+    pendingCancelAt;
     allowedSenders;
 };
 exports.EmailPhoneSet = EmailPhoneSet;
@@ -50,6 +51,10 @@ __decorate([
     (0, typeorm_1.Column)({ name: 'stripe_subscription_id', type: 'varchar', length: 100, nullable: true }),
     __metadata("design:type", Object)
 ], EmailPhoneSet.prototype, "stripeSubscriptionId", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ name: 'pending_cancel_at', type: 'datetime', nullable: true }),
+    __metadata("design:type", Object)
+], EmailPhoneSet.prototype, "pendingCancelAt", void 0);
 __decorate([
     (0, typeorm_1.OneToMany)(() => set_allowed_sender_entity_1.SetAllowedSender, (s) => s.set, { eager: false }),
     __metadata("design:type", Array)

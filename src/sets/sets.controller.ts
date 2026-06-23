@@ -52,5 +52,14 @@ export class SetsController {
   ) {
     return this.setsService.updateSenders(user.user_id, setId, dto.senders);
   }
+
+  @Post(':setId/cancel')
+  @UseGuards(AuthGuard)
+  async cancelSubscription(
+    @Param('setId', ParseIntPipe) setId: number,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.setsService.cancelSetSubscription(user.user_id, setId);
+  }
 }
 

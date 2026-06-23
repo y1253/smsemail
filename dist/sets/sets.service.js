@@ -60,14 +60,17 @@ let SetsService = SetsService_1 = class SetsService {
     async listSetsForUser(userId) {
         const sets = await this.setRepo.find({
             where: { email: { user: { userId } }, deletedAt: (0, typeorm_2.IsNull)() },
-            relations: ['email', 'phone'],
+            relations: ['email', 'phone', 'allowedSenders'],
             order: { createdAt: 'ASC' },
         });
         return sets.map((s) => ({
             setId: s.setId,
             createdAt: s.createdAt,
+            pendingCancelAt: s.pendingCancelAt,
             email: { emailId: s.email.emailId, email: s.email.email },
             phone: { phoneId: s.phone.phoneId, phone: s.phone.phone },
+            allowedSenders: (s.allowedSenders ?? []).map((a) => a.email),
+            stripeSubscriptionId: s.stripeSubscriptionId,
         }));
     }
     async deleteSetForUser(userId, setId) {
@@ -172,6 +175,27 @@ let SetsService = SetsService_1 = class SetsService {
         await this.refreshGmailWatch(email);
         await this.signalwireService.sendSms(phone.phone, 'Welcome! Your emails will be forwarded here as SMS summaries.\nText HELP anytime to see available commands.');
         return { setId: saved.setId };
+    }
+    async cancelSetSubscription(userId, setId) {
+        const set = await this.setRepo.findOne({
+            where: { setId, deletedAt: (0, typeorm_2.IsNull)() },
+            relations: ['email', 'email.user'],
+        });
+        if (!set || set.email.user.userId !== userId) {
+            throw new common_1.BadRequestException('Set not found for this user');
+        }
+        if (!set.stripeSubscriptionId || set.stripeSubscriptionId === 'PROMO') {
+            throw new common_1.BadRequestException('No paid subscription to cancel');
+        }
+        if (set.pendingCancelAt) {
+            throw new common_1.BadRequestException('Subscription is already scheduled for cancellation');
+        }
+        const sub = await this.stripe.subscriptions.update(set.stripeSubscriptionId, {
+            cancel_at_period_end: true,
+        });
+        set.pendingCancelAt = new Date(sub.current_period_end * 1000);
+        await this.setRepo.save(set);
+        return { cancelAt: set.pendingCancelAt };
     }
     async updateSenders(userId, setId, senders) {
         const set = await this.setRepo.findOne({
