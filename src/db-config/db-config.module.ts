@@ -12,6 +12,7 @@ import { IncomeMessage } from '../messages/income-message.entity';
 import { Subscription } from '../subscriptions/subscription.entity';
 import { EmailPhoneSet } from '../sets/email-phone-set.entity';
 import { SetAllowedSender } from '../sets/set-allowed-sender.entity';
+import { PendingSmsCommand } from '../webhooks/pending-sms-command.entity';
 
 @Module({
   imports: [
@@ -24,7 +25,7 @@ import { SetAllowedSender } from '../sets/set-allowed-sender.entity';
       password: '12345',
       database: 'smsemail',
       synchronize: true,
-      entities: [User, Email, Phone, PhoneVerification, Transaction, Subscription, IncomeMessage, OutMessage, EmailPhoneSet, SetAllowedSender],
+      entities: [User, Email, Phone, PhoneVerification, Transaction, Subscription, IncomeMessage, OutMessage, EmailPhoneSet, SetAllowedSender, PendingSmsCommand],
 
     }),
   ],

@@ -19,6 +19,7 @@ const income_message_entity_1 = require("../messages/income-message.entity");
 const subscription_entity_1 = require("../subscriptions/subscription.entity");
 const email_phone_set_entity_1 = require("../sets/email-phone-set.entity");
 const set_allowed_sender_entity_1 = require("../sets/set-allowed-sender.entity");
+const pending_sms_command_entity_1 = require("../webhooks/pending-sms-command.entity");
 let DbConfigModule = class DbConfigModule {
 };
 exports.DbConfigModule = DbConfigModule;
@@ -34,7 +35,7 @@ exports.DbConfigModule = DbConfigModule = __decorate([
                 password: '12345',
                 database: 'smsemail',
                 synchronize: true,
-                entities: [user_entity_1.User, email_entity_1.Email, phone_entity_1.Phone, phone_verification_entity_1.PhoneVerification, transaction_entity_1.Transaction, subscription_entity_1.Subscription, income_message_entity_1.IncomeMessage, out_message_entity_1.OutMessage, email_phone_set_entity_1.EmailPhoneSet, set_allowed_sender_entity_1.SetAllowedSender],
+                entities: [user_entity_1.User, email_entity_1.Email, phone_entity_1.Phone, phone_verification_entity_1.PhoneVerification, transaction_entity_1.Transaction, subscription_entity_1.Subscription, income_message_entity_1.IncomeMessage, out_message_entity_1.OutMessage, email_phone_set_entity_1.EmailPhoneSet, set_allowed_sender_entity_1.SetAllowedSender, pending_sms_command_entity_1.PendingSmsCommand],
             }),
         ],
         exports: [typeorm_1.TypeOrmModule],

@@ -27,6 +27,7 @@ const email_entity_1 = require("../emails/email.entity");
 const phone_entity_1 = require("../phones/phone.entity");
 const email_phone_set_entity_1 = require("../sets/email-phone-set.entity");
 const income_message_entity_1 = require("../messages/income-message.entity");
+const pending_sms_command_entity_1 = require("./pending-sms-command.entity");
 const emails_service_1 = require("../emails/emails.service");
 const gmail_service_1 = require("../gmail/gmail.service");
 const openai_service_1 = require("../openai/openai.service");
@@ -36,6 +37,7 @@ let WebhooksService = WebhooksService_1 = class WebhooksService {
     phoneRepo;
     setRepo;
     incomeMessageRepo;
+    pendingRepo;
     config;
     emailsService;
     gmailService;
@@ -43,11 +45,12 @@ let WebhooksService = WebhooksService_1 = class WebhooksService {
     signalwireService;
     logger = new common_1.Logger(WebhooksService_1.name);
     stripe;
-    constructor(emailRepo, phoneRepo, setRepo, incomeMessageRepo, config, emailsService, gmailService, openAiService, signalwireService) {
+    constructor(emailRepo, phoneRepo, setRepo, incomeMessageRepo, pendingRepo, config, emailsService, gmailService, openAiService, signalwireService) {
         this.emailRepo = emailRepo;
         this.phoneRepo = phoneRepo;
         this.setRepo = setRepo;
         this.incomeMessageRepo = incomeMessageRepo;
+        this.pendingRepo = pendingRepo;
         this.config = config;
         this.emailsService = emailsService;
         this.gmailService = gmailService;
@@ -122,57 +125,84 @@ let WebhooksService = WebhooksService_1 = class WebhooksService {
             await this.signalwireService.sendSms(from, 'No active account found for this number.');
             return;
         }
-        const activeSet = await this.setRepo.findOne({
+        const activeSets = await this.setRepo.find({
             where: { phone: { phoneId: phone.phoneId }, deletedAt: (0, typeorm_2.IsNull)() },
             relations: ['email'],
         });
-        if (!activeSet) {
+        const emails = [];
+        const seen = new Set();
+        for (const set of activeSets) {
+            if (!seen.has(set.email.emailId)) {
+                seen.add(set.email.emailId);
+                emails.push(set.email);
+            }
+        }
+        emails.sort((a, b) => a.emailId - b.emailId);
+        if (!emails.length) {
             await this.signalwireService.sendSms(from, 'No active set found for this number.');
             return;
         }
-        const refreshToken = this.emailsService.decrypt(activeSet.email.refreshToken);
-        const senderAddress = activeSet.email.email;
+        const emailIds = emails.map((e) => e.emailId);
         const trimmed = body.trim();
         try {
+            const pending = await this.pendingRepo.findOne({
+                where: { phone: normalizedFrom, expiresAt: (0, typeorm_2.MoreThan)(new Date()) },
+                order: { id: 'DESC' },
+            });
+            if (pending) {
+                if (/^\d+$/.test(trimmed)) {
+                    const choice = parseInt(trimmed, 10);
+                    const candidateIds = pending.emailIds.split(',').map((s) => parseInt(s, 10));
+                    const chosenId = candidateIds[choice - 1];
+                    const chosen = emails.find((e) => e.emailId === chosenId);
+                    if (!chosen) {
+                        await this.signalwireService.sendSms(from, this.buildSelectPrompt(emails));
+                        return;
+                    }
+                    await this.pendingRepo.delete({ id: pending.id });
+                    const { to, subject, body: msgBody } = this.parseSendCommand(pending.body);
+                    await this.sendNewEmail(from, chosen, to, subject, msgBody);
+                    return;
+                }
+                await this.pendingRepo.delete({ id: pending.id });
+            }
             if (/^R\s+\d+\s+/i.test(trimmed)) {
                 const match = trimmed.match(/^R\s+(\d+)\s+([\s\S]+)$/i);
                 const msgId = parseInt(match[1], 10);
                 const replyText = match[2];
                 const msg = await this.incomeMessageRepo.findOne({
-                    where: { messageId: msgId, email: { emailId: activeSet.email.emailId } },
+                    where: { messageId: msgId, email: { emailId: (0, typeorm_2.In)(emailIds) } },
+                    relations: ['email'],
                 });
                 if (!msg)
                     throw new Error(`Message #${msgId} not found`);
-                await this.gmailService.sendReply(refreshToken, msg.gmailThreadId, msg.sender, msg.subject, replyText, senderAddress);
-                await this.signalwireService.sendSms(from, `Sent to ${msg.sender}`);
+                await this.replyToMessage(from, msg.email, msg, replyText);
             }
             else if (/^R\s+/i.test(trimmed)) {
                 const replyText = trimmed.replace(/^R\s+/i, '');
                 const latest = await this.incomeMessageRepo.findOne({
-                    where: { email: { emailId: activeSet.email.emailId } },
+                    where: { email: { emailId: (0, typeorm_2.In)(emailIds) } },
                     order: { messageId: 'DESC' },
+                    relations: ['email'],
                 });
                 if (!latest)
                     throw new Error('No messages to reply to');
-                await this.gmailService.sendReply(refreshToken, latest.gmailThreadId, latest.sender, latest.subject, replyText, senderAddress);
-                await this.signalwireService.sendSms(from, `Sent to ${latest.sender}`);
+                await this.replyToMessage(from, latest.email, latest, replyText);
             }
             else if (/^S\s+/i.test(trimmed)) {
-                const rest = trimmed.replace(/^S\s+/i, '');
-                const pipeParts = rest.split('|').map((p) => p.trim());
-                if (pipeParts.length >= 3) {
-                    const [to, subject, ...bodyParts] = pipeParts;
-                    await this.gmailService.sendEmail(refreshToken, senderAddress, to, subject, bodyParts.join('|'));
-                    await this.signalwireService.sendSms(from, `Sent to ${to}`);
+                const { to, subject, body: msgBody } = this.parseSendCommand(trimmed);
+                if (emails.length === 1) {
+                    await this.sendNewEmail(from, emails[0], to, subject, msgBody);
                 }
                 else {
-                    const spaceIdx = rest.indexOf(' ');
-                    if (spaceIdx === -1)
-                        throw new Error('Missing message body. Use: S email@x.com message');
-                    const to = rest.slice(0, spaceIdx);
-                    const msgBody = rest.slice(spaceIdx + 1);
-                    await this.gmailService.sendEmail(refreshToken, senderAddress, to, 'Message from SMS', msgBody);
-                    await this.signalwireService.sendSms(from, `Sent to ${to}`);
+                    await this.pendingRepo.delete({ phone: normalizedFrom });
+                    await this.pendingRepo.save(this.pendingRepo.create({
+                        phone: normalizedFrom,
+                        body: trimmed,
+                        emailIds: emailIds.join(','),
+                        expiresAt: new Date(Date.now() + 5 * 60 * 1000),
+                    }));
+                    await this.signalwireService.sendSms(from, this.buildSelectPrompt(emails));
                 }
             }
             else if (/^HELP$/i.test(trimmed)) {
@@ -186,6 +216,53 @@ let WebhooksService = WebhooksService_1 = class WebhooksService {
             this.logger.error(`Inbound SMS error from ${from}: ${err}`);
             await this.signalwireService.sendSms(from, `Error: ${err.message}`);
         }
+    }
+    parseSendCommand(trimmed) {
+        const rest = trimmed.replace(/^S\s+/i, '');
+        const pipeParts = rest.split('|').map((p) => p.trim());
+        if (pipeParts.length >= 3) {
+            const [to, subject, ...bodyParts] = pipeParts;
+            return { to, subject, body: bodyParts.join('|') };
+        }
+        const spaceIdx = rest.indexOf(' ');
+        if (spaceIdx === -1)
+            throw new Error('Missing message body. Use: S email@x.com message');
+        return { to: rest.slice(0, spaceIdx), subject: 'Message from SMS', body: rest.slice(spaceIdx + 1) };
+    }
+    async replyToMessage(from, email, msg, replyText) {
+        const refreshToken = this.emailsService.decrypt(email.refreshToken);
+        try {
+            await this.gmailService.sendReply(refreshToken, msg.gmailThreadId, msg.sender, msg.subject, replyText, email.email);
+        }
+        catch (err) {
+            await this.handleSendError(from, email, err);
+            return;
+        }
+        await this.signalwireService.sendSms(from, `Sent to ${msg.sender}`);
+    }
+    async sendNewEmail(from, email, to, subject, body) {
+        const refreshToken = this.emailsService.decrypt(email.refreshToken);
+        try {
+            await this.gmailService.sendEmail(refreshToken, email.email, to, subject, body);
+        }
+        catch (err) {
+            await this.handleSendError(from, email, err);
+            return;
+        }
+        await this.signalwireService.sendSms(from, `Sent to ${to}`);
+    }
+    async handleSendError(from, email, err) {
+        const message = err?.message ?? String(err);
+        if (/invalid_grant/i.test(message)) {
+            this.logger.error(`invalid_grant sending from email ${email.emailId} (${email.email})`);
+            await this.signalwireService.sendSms(from, `Gmail connection for ${email.email} needs reauthorizing — reconnect it on the dashboard.`);
+            return;
+        }
+        throw err instanceof Error ? err : new Error(message);
+    }
+    buildSelectPrompt(emails) {
+        const lines = emails.map((e, i) => `${i + 1} ${e.email}`);
+        return `Send from which email? Reply with the number:\n${lines.join('\n')}`;
     }
     async handleStripeWebhook(rawBody, sig) {
         const secret = this.config.get('STRIPE_WEBHOOK_SECRET');
@@ -290,7 +367,9 @@ exports.WebhooksService = WebhooksService = WebhooksService_1 = __decorate([
     __param(1, (0, typeorm_1.InjectRepository)(phone_entity_1.Phone)),
     __param(2, (0, typeorm_1.InjectRepository)(email_phone_set_entity_1.EmailPhoneSet)),
     __param(3, (0, typeorm_1.InjectRepository)(income_message_entity_1.IncomeMessage)),
+    __param(4, (0, typeorm_1.InjectRepository)(pending_sms_command_entity_1.PendingSmsCommand)),
     __metadata("design:paramtypes", [typeorm_2.Repository,
+        typeorm_2.Repository,
         typeorm_2.Repository,
         typeorm_2.Repository,
         typeorm_2.Repository,

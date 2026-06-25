@@ -41,7 +41,7 @@ __decorate([
     __metadata("design:type", String)
 ], Email.prototype, "email", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ name: 'refresh_token', length: 245 }),
+    (0, typeorm_1.Column)({ name: 'refresh_token', length: 512 }),
     __metadata("design:type", String)
 ], Email.prototype, "refreshToken", void 0);
 __decorate([

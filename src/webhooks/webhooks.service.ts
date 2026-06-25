@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, IsNull } from 'typeorm';
+import { Repository, IsNull, In, MoreThan } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
 import { Cron } from '@nestjs/schedule';
 import Stripe from 'stripe';
@@ -8,6 +8,7 @@ import { Email } from '../emails/email.entity';
 import { Phone } from '../phones/phone.entity';
 import { EmailPhoneSet } from '../sets/email-phone-set.entity';
 import { IncomeMessage } from '../messages/income-message.entity';
+import { PendingSmsCommand } from './pending-sms-command.entity';
 import { EmailsService } from '../emails/emails.service';
 import { GmailService } from '../gmail/gmail.service';
 import { OpenAiService } from '../openai/openai.service';
@@ -27,6 +28,8 @@ export class WebhooksService {
     private readonly setRepo: Repository<EmailPhoneSet>,
     @InjectRepository(IncomeMessage)
     private readonly incomeMessageRepo: Repository<IncomeMessage>,
+    @InjectRepository(PendingSmsCommand)
+    private readonly pendingRepo: Repository<PendingSmsCommand>,
     private readonly config: ConfigService,
     private readonly emailsService: EmailsService,
     private readonly gmailService: GmailService,
@@ -111,53 +114,87 @@ export class WebhooksService {
       return;
     }
 
-    const activeSet = await this.setRepo.findOne({
+    // All active emails linked to this phone (a phone can be in several sets).
+    const activeSets = await this.setRepo.find({
       where: { phone: { phoneId: phone.phoneId }, deletedAt: IsNull() },
       relations: ['email'],
     });
-    if (!activeSet) {
+    const emails: Email[] = [];
+    const seen = new Set<number>();
+    for (const set of activeSets) {
+      if (!seen.has(set.email.emailId)) {
+        seen.add(set.email.emailId);
+        emails.push(set.email);
+      }
+    }
+    emails.sort((a, b) => a.emailId - b.emailId);
+    if (!emails.length) {
       await this.signalwireService.sendSms(from, 'No active set found for this number.');
       return;
     }
+    const emailIds = emails.map((e) => e.emailId);
 
-    const refreshToken = this.emailsService.decrypt(activeSet.email.refreshToken);
-    const senderAddress = activeSet.email.email;
     const trimmed = body.trim();
 
     try {
+      // Resolve a pending "which email to send from?" selection, if any.
+      const pending = await this.pendingRepo.findOne({
+        where: { phone: normalizedFrom, expiresAt: MoreThan(new Date()) },
+        order: { id: 'DESC' },
+      });
+      if (pending) {
+        if (/^\d+$/.test(trimmed)) {
+          const choice = parseInt(trimmed, 10);
+          const candidateIds = pending.emailIds.split(',').map((s) => parseInt(s, 10));
+          const chosenId = candidateIds[choice - 1];
+          const chosen = emails.find((e) => e.emailId === chosenId);
+          if (!chosen) {
+            await this.signalwireService.sendSms(from, this.buildSelectPrompt(emails));
+            return;
+          }
+          await this.pendingRepo.delete({ id: pending.id });
+          const { to, subject, body: msgBody } = this.parseSendCommand(pending.body);
+          await this.sendNewEmail(from, chosen, to, subject, msgBody);
+          return;
+        }
+        // A non-numeric reply abandons the pending selection; process as fresh.
+        await this.pendingRepo.delete({ id: pending.id });
+      }
+
       if (/^R\s+\d+\s+/i.test(trimmed)) {
         const match = trimmed.match(/^R\s+(\d+)\s+([\s\S]+)$/i)!;
         const msgId = parseInt(match[1], 10);
         const replyText = match[2];
         const msg = await this.incomeMessageRepo.findOne({
-          where: { messageId: msgId, email: { emailId: activeSet.email.emailId } },
+          where: { messageId: msgId, email: { emailId: In(emailIds) } },
+          relations: ['email'],
         });
         if (!msg) throw new Error(`Message #${msgId} not found`);
-        await this.gmailService.sendReply(refreshToken, msg.gmailThreadId, msg.sender, msg.subject, replyText, senderAddress);
-        await this.signalwireService.sendSms(from, `Sent to ${msg.sender}`);
+        await this.replyToMessage(from, msg.email, msg, replyText);
       } else if (/^R\s+/i.test(trimmed)) {
         const replyText = trimmed.replace(/^R\s+/i, '');
         const latest = await this.incomeMessageRepo.findOne({
-          where: { email: { emailId: activeSet.email.emailId } },
+          where: { email: { emailId: In(emailIds) } },
           order: { messageId: 'DESC' },
+          relations: ['email'],
         });
         if (!latest) throw new Error('No messages to reply to');
-        await this.gmailService.sendReply(refreshToken, latest.gmailThreadId, latest.sender, latest.subject, replyText, senderAddress);
-        await this.signalwireService.sendSms(from, `Sent to ${latest.sender}`);
+        await this.replyToMessage(from, latest.email, latest, replyText);
       } else if (/^S\s+/i.test(trimmed)) {
-        const rest = trimmed.replace(/^S\s+/i, '');
-        const pipeParts = rest.split('|').map((p) => p.trim());
-        if (pipeParts.length >= 3) {
-          const [to, subject, ...bodyParts] = pipeParts;
-          await this.gmailService.sendEmail(refreshToken, senderAddress, to, subject, bodyParts.join('|'));
-          await this.signalwireService.sendSms(from, `Sent to ${to}`);
+        const { to, subject, body: msgBody } = this.parseSendCommand(trimmed);
+        if (emails.length === 1) {
+          await this.sendNewEmail(from, emails[0], to, subject, msgBody);
         } else {
-          const spaceIdx = rest.indexOf(' ');
-          if (spaceIdx === -1) throw new Error('Missing message body. Use: S email@x.com message');
-          const to = rest.slice(0, spaceIdx);
-          const msgBody = rest.slice(spaceIdx + 1);
-          await this.gmailService.sendEmail(refreshToken, senderAddress, to, 'Message from SMS', msgBody);
-          await this.signalwireService.sendSms(from, `Sent to ${to}`);
+          await this.pendingRepo.delete({ phone: normalizedFrom });
+          await this.pendingRepo.save(
+            this.pendingRepo.create({
+              phone: normalizedFrom,
+              body: trimmed,
+              emailIds: emailIds.join(','),
+              expiresAt: new Date(Date.now() + 5 * 60 * 1000),
+            }),
+          );
+          await this.signalwireService.sendSms(from, this.buildSelectPrompt(emails));
         }
       } else if (/^HELP$/i.test(trimmed)) {
         await this.signalwireService.sendSms(
@@ -171,6 +208,74 @@ export class WebhooksService {
       this.logger.error(`Inbound SMS error from ${from}: ${err}`);
       await this.signalwireService.sendSms(from, `Error: ${(err as Error).message}`);
     }
+  }
+
+  /** Parse an "S ..." command into recipient / subject / body. */
+  private parseSendCommand(trimmed: string): { to: string; subject: string; body: string } {
+    const rest = trimmed.replace(/^S\s+/i, '');
+    const pipeParts = rest.split('|').map((p) => p.trim());
+    if (pipeParts.length >= 3) {
+      const [to, subject, ...bodyParts] = pipeParts;
+      return { to, subject, body: bodyParts.join('|') };
+    }
+    const spaceIdx = rest.indexOf(' ');
+    if (spaceIdx === -1) throw new Error('Missing message body. Use: S email@x.com message');
+    return { to: rest.slice(0, spaceIdx), subject: 'Message from SMS', body: rest.slice(spaceIdx + 1) };
+  }
+
+  /** Reply to a stored incoming message using the email account that received it. */
+  private async replyToMessage(
+    from: string,
+    email: Email,
+    msg: IncomeMessage,
+    replyText: string,
+  ): Promise<void> {
+    const refreshToken = this.emailsService.decrypt(email.refreshToken);
+    try {
+      await this.gmailService.sendReply(refreshToken, msg.gmailThreadId, msg.sender, msg.subject, replyText, email.email);
+    } catch (err) {
+      await this.handleSendError(from, email, err);
+      return;
+    }
+    await this.signalwireService.sendSms(from, `Sent to ${msg.sender}`);
+  }
+
+  /** Send a new email from a specific account. */
+  private async sendNewEmail(
+    from: string,
+    email: Email,
+    to: string,
+    subject: string,
+    body: string,
+  ): Promise<void> {
+    const refreshToken = this.emailsService.decrypt(email.refreshToken);
+    try {
+      await this.gmailService.sendEmail(refreshToken, email.email, to, subject, body);
+    } catch (err) {
+      await this.handleSendError(from, email, err);
+      return;
+    }
+    await this.signalwireService.sendSms(from, `Sent to ${to}`);
+  }
+
+  /** Turn an expired/revoked-token failure into a clear "reconnect" SMS. */
+  private async handleSendError(from: string, email: Email, err: unknown): Promise<void> {
+    const message = (err as Error)?.message ?? String(err);
+    if (/invalid_grant/i.test(message)) {
+      this.logger.error(`invalid_grant sending from email ${email.emailId} (${email.email})`);
+      await this.signalwireService.sendSms(
+        from,
+        `Gmail connection for ${email.email} needs reauthorizing — reconnect it on the dashboard.`,
+      );
+      return;
+    }
+    throw err instanceof Error ? err : new Error(message);
+  }
+
+  /** "Send from which email? Reply with the number:\n1 a@x.com\n2 b@x.com" */
+  private buildSelectPrompt(emails: Email[]): string {
+    const lines = emails.map((e, i) => `${i + 1} ${e.email}`);
+    return `Send from which email? Reply with the number:\n${lines.join('\n')}`;
   }
 
   async handleStripeWebhook(rawBody: Buffer, sig: string): Promise<void> {

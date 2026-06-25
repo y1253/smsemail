@@ -22,7 +22,7 @@ export class Email {
   @Column({ name: 'email', length: 145 })
   email!: string;
 
-  @Column({ name: 'refresh_token', length: 245 })
+  @Column({ name: 'refresh_token', length: 512 })
   refreshToken!: string;
 
   @Column({ name: 'added_at', type: 'datetime' })
