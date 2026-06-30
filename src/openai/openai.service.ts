@@ -1,6 +1,7 @@
 import { Injectable, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import OpenAI from 'openai';
+import { truncateClean } from '../common/text.util';
 
 @Injectable()
 export class OpenAiService implements OnModuleInit {
@@ -23,7 +24,7 @@ export class OpenAiService implements OnModuleInit {
       messages: [
         {
           role: 'system',
-          content: `You are a summarizer. Compress the following email body to ${budget} characters or fewer. Use only information present in the email — do not add, infer, or invent anything. Return only the compressed text, nothing else.`,
+          content: `You are a summarizer. Compress the following email body to ${budget} characters or fewer. Write complete sentences and end on a sentence boundary; never stop mid-sentence. Use only information present in the email — do not add, infer, or invent anything. Return only the compressed text, nothing else.`,
         },
         {
           role: 'user',
@@ -34,6 +35,6 @@ export class OpenAiService implements OnModuleInit {
     });
 
     const text = response.choices[0]?.message?.content?.trim() ?? '';
-    return text.slice(0, budget);
+    return truncateClean(text, budget);
   }
 }

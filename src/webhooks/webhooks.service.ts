@@ -13,6 +13,7 @@ import { EmailsService } from '../emails/emails.service';
 import { GmailService } from '../gmail/gmail.service';
 import { OpenAiService } from '../openai/openai.service';
 import { SignalwireService } from '../signalwire/signalwire.service';
+import { truncateClean } from '../common/text.util';
 
 @Injectable()
 export class WebhooksService {
@@ -366,8 +367,8 @@ export class WebhooksService {
     const senderLen = Math.min(this.formatSender(sender).length, 40);
     const subjectLen = Math.min(cleanSubject.length, 35);
     const emailLen = Math.min(toEmail.length, 30);
-    // Structure: "To: \nFrom: \nSubj: \n\n\n\n" = 22 chars; footer reserve = 15
-    return Math.max(10, 160 - 22 - emailLen - senderLen - subjectLen - 15);
+    // Structure: "To: \nFrom: \nSubj: \n\n\n\n" = 22 chars; footer reserve = 20
+    return Math.max(10, 160 - 22 - emailLen - senderLen - subjectLen - 20);
   }
 
   private buildSms(
@@ -378,12 +379,16 @@ export class WebhooksService {
     messageId: number,
     toEmail: string,
   ): string {
-    const idStr = String(messageId).padStart(4, '0');
-    const footer = attachmentCount > 0 ? `📎+${attachmentCount}  |  #${idStr}` : `#${idStr}`;
+    const replyHint = `Reply: R ${messageId}`;
+    const footer = attachmentCount > 0 ? `📎+${attachmentCount}  |  ${replyHint}` : replyHint;
     const s = this.formatSender(sender).slice(0, 40);
     const cleanSubject = subject.replace(/^(re:\s*)*/i, '').replace(/<[^>]+>/g, '').trim();
     const sub = cleanSubject.slice(0, 35);
     const to = toEmail.slice(0, 30);
-    return `To: ${to}\nFrom: ${s}\nSubj: ${sub}\n\n${summary}\n\n${footer}`.slice(0, 160);
+    // Fit the summary to the exact room left after the real header + footer, so
+    // any truncation lands on a word boundary (...) instead of mid-word.
+    const headerFooter = `To: ${to}\nFrom: ${s}\nSubj: ${sub}\n\n\n\n${footer}`;
+    const body = truncateClean(summary, Math.max(0, 160 - headerFooter.length));
+    return `To: ${to}\nFrom: ${s}\nSubj: ${sub}\n\n${body}\n\n${footer}`;
   }
 }

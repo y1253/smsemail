@@ -32,6 +32,7 @@ const emails_service_1 = require("../emails/emails.service");
 const gmail_service_1 = require("../gmail/gmail.service");
 const openai_service_1 = require("../openai/openai.service");
 const signalwire_service_1 = require("../signalwire/signalwire.service");
+const text_util_1 = require("../common/text.util");
 let WebhooksService = WebhooksService_1 = class WebhooksService {
     emailRepo;
     phoneRepo;
@@ -342,16 +343,18 @@ let WebhooksService = WebhooksService_1 = class WebhooksService {
         const senderLen = Math.min(this.formatSender(sender).length, 40);
         const subjectLen = Math.min(cleanSubject.length, 35);
         const emailLen = Math.min(toEmail.length, 30);
-        return Math.max(10, 160 - 22 - emailLen - senderLen - subjectLen - 15);
+        return Math.max(10, 160 - 22 - emailLen - senderLen - subjectLen - 20);
     }
     buildSms(sender, subject, summary, attachmentCount, messageId, toEmail) {
-        const idStr = String(messageId).padStart(4, '0');
-        const footer = attachmentCount > 0 ? `📎+${attachmentCount}  |  #${idStr}` : `#${idStr}`;
+        const replyHint = `Reply: R ${messageId}`;
+        const footer = attachmentCount > 0 ? `📎+${attachmentCount}  |  ${replyHint}` : replyHint;
         const s = this.formatSender(sender).slice(0, 40);
         const cleanSubject = subject.replace(/^(re:\s*)*/i, '').replace(/<[^>]+>/g, '').trim();
         const sub = cleanSubject.slice(0, 35);
         const to = toEmail.slice(0, 30);
-        return `To: ${to}\nFrom: ${s}\nSubj: ${sub}\n\n${summary}\n\n${footer}`.slice(0, 160);
+        const headerFooter = `To: ${to}\nFrom: ${s}\nSubj: ${sub}\n\n\n\n${footer}`;
+        const body = (0, text_util_1.truncateClean)(summary, Math.max(0, 160 - headerFooter.length));
+        return `To: ${to}\nFrom: ${s}\nSubj: ${sub}\n\n${body}\n\n${footer}`;
     }
 };
 exports.WebhooksService = WebhooksService;

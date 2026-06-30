@@ -16,6 +16,7 @@ exports.OpenAiService = void 0;
 const common_1 = require("@nestjs/common");
 const config_1 = require("@nestjs/config");
 const openai_1 = __importDefault(require("openai"));
+const text_util_1 = require("../common/text.util");
 let OpenAiService = class OpenAiService {
     config;
     client;
@@ -37,7 +38,7 @@ let OpenAiService = class OpenAiService {
             messages: [
                 {
                     role: 'system',
-                    content: `You are a summarizer. Compress the following email body to ${budget} characters or fewer. Use only information present in the email — do not add, infer, or invent anything. Return only the compressed text, nothing else.`,
+                    content: `You are a summarizer. Compress the following email body to ${budget} characters or fewer. Write complete sentences and end on a sentence boundary; never stop mid-sentence. Use only information present in the email — do not add, infer, or invent anything. Return only the compressed text, nothing else.`,
                 },
                 {
                     role: 'user',
@@ -47,7 +48,7 @@ let OpenAiService = class OpenAiService {
             max_tokens: 100,
         });
         const text = response.choices[0]?.message?.content?.trim() ?? '';
-        return text.slice(0, budget);
+        return (0, text_util_1.truncateClean)(text, budget);
     }
 };
 exports.OpenAiService = OpenAiService;
