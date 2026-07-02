@@ -23,12 +23,19 @@ let AdminController = class AdminController {
         this.adminService = adminService;
         this.config = config;
     }
-    async getAccounts(password) {
+    assertAdmin(password) {
         const adminPassword = this.config.get('ADMIN_PASSWORD');
         if (!adminPassword || password !== adminPassword) {
             throw new common_1.UnauthorizedException('Invalid admin password');
         }
+    }
+    async getAccounts(password) {
+        this.assertAdmin(password);
         return this.adminService.getAllAccounts();
+    }
+    async getAccount(password, userId) {
+        this.assertAdmin(password);
+        return this.adminService.getAccountDetail(userId);
     }
 };
 exports.AdminController = AdminController;
@@ -39,6 +46,14 @@ __decorate([
     __metadata("design:paramtypes", [String]),
     __metadata("design:returntype", Promise)
 ], AdminController.prototype, "getAccounts", null);
+__decorate([
+    (0, common_1.Get)('accounts/:userId'),
+    __param(0, (0, common_1.Headers)('x-admin-password')),
+    __param(1, (0, common_1.Param)('userId', common_1.ParseIntPipe)),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, Number]),
+    __metadata("design:returntype", Promise)
+], AdminController.prototype, "getAccount", null);
 exports.AdminController = AdminController = __decorate([
     (0, common_1.Controller)('admin'),
     __metadata("design:paramtypes", [admin_service_1.AdminService,
