@@ -18,6 +18,8 @@ let Phone = class Phone {
     phone;
     addedAt;
     deletedAt;
+    consentAt;
+    optedOutAt;
 };
 exports.Phone = Phone;
 __decorate([
@@ -41,6 +43,14 @@ __decorate([
     (0, typeorm_1.Column)({ name: 'deleted_at', type: 'datetime', nullable: true }),
     __metadata("design:type", Object)
 ], Phone.prototype, "deletedAt", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ name: 'consent_at', type: 'datetime', nullable: true }),
+    __metadata("design:type", Object)
+], Phone.prototype, "consentAt", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ name: 'opted_out_at', type: 'datetime', nullable: true }),
+    __metadata("design:type", Object)
+], Phone.prototype, "optedOutAt", void 0);
 exports.Phone = Phone = __decorate([
     (0, typeorm_1.Entity)('phone')
 ], Phone);

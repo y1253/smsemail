@@ -5,4 +5,6 @@ export declare class Phone {
     phone: string;
     addedAt: Date;
     deletedAt: Date | null;
+    consentAt: Date | null;
+    optedOutAt: Date | null;
 }

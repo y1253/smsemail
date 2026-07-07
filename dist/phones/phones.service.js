@@ -40,7 +40,7 @@ let PhonesService = class PhonesService {
         });
         return phones.map((p) => ({ phoneId: p.phoneId, phone: p.phone, addedAt: p.addedAt }));
     }
-    async sendVerificationCode(userId, phone) {
+    async sendVerificationCode(userId, phone, consent) {
         const user = await this.userRepo.findOne({ where: { userId } });
         if (!user) {
             throw new common_1.BadRequestException('User not found');
@@ -53,6 +53,7 @@ let PhonesService = class PhonesService {
             phone,
             code,
             expiresAt,
+            consentAt: consent ? new Date() : null,
         });
         await this.verificationRepo.save(verification);
         const body = `Your verification code is: ${code}. It expires in ${CODE_EXPIRY_MINUTES} minutes.`;
@@ -79,10 +80,10 @@ let PhonesService = class PhonesService {
             relations: ['user'],
         });
         if (existing) {
-            if (existing.deletedAt) {
-                existing.deletedAt = null;
-                await this.phoneRepo.save(existing);
-            }
+            existing.deletedAt = null;
+            existing.consentAt = valid.consentAt;
+            existing.optedOutAt = null;
+            await this.phoneRepo.save(existing);
             await this.verificationRepo.delete({ userId, phone });
             return { verified: true, phoneId: existing.phoneId };
         }
@@ -91,6 +92,8 @@ let PhonesService = class PhonesService {
             phone,
             addedAt: new Date(),
             deletedAt: null,
+            consentAt: valid.consentAt,
+            optedOutAt: null,
         });
         await this.phoneRepo.save(newPhone);
         await this.verificationRepo.delete({ userId, phone });

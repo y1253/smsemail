@@ -17,6 +17,7 @@ let PhoneVerification = class PhoneVerification {
     phone;
     code;
     expiresAt;
+    consentAt;
     createdAt;
 };
 exports.PhoneVerification = PhoneVerification;
@@ -40,6 +41,10 @@ __decorate([
     (0, typeorm_1.Column)({ name: 'expires_at', type: 'datetime' }),
     __metadata("design:type", Date)
 ], PhoneVerification.prototype, "expiresAt", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ name: 'consent_at', type: 'datetime', nullable: true }),
+    __metadata("design:type", Object)
+], PhoneVerification.prototype, "consentAt", void 0);
 __decorate([
     (0, typeorm_1.CreateDateColumn)({ name: 'created_at', type: 'datetime' }),
     __metadata("design:type", Date)

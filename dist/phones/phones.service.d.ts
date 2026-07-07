@@ -14,7 +14,7 @@ export declare class PhonesService {
         phone: string;
         addedAt: Date;
     }[]>;
-    sendVerificationCode(userId: number, phone: string): Promise<{
+    sendVerificationCode(userId: number, phone: string, consent: boolean): Promise<{
         sent: boolean;
     }>;
     verifyCode(userId: number, phone: string, code: string): Promise<{

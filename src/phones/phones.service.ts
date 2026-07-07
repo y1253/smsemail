@@ -33,7 +33,11 @@ export class PhonesService {
     return phones.map((p) => ({ phoneId: p.phoneId, phone: p.phone, addedAt: p.addedAt }));
   }
 
-  async sendVerificationCode(userId: number, phone: string): Promise<{ sent: boolean }> {
+  async sendVerificationCode(
+    userId: number,
+    phone: string,
+    consent: boolean,
+  ): Promise<{ sent: boolean }> {
     const user = await this.userRepo.findOne({ where: { userId } });
     if (!user) {
       throw new BadRequestException('User not found');
@@ -48,6 +52,7 @@ export class PhonesService {
       phone,
       code,
       expiresAt,
+      consentAt: consent ? new Date() : null,
     });
     await this.verificationRepo.save(verification);
 
@@ -87,10 +92,11 @@ export class PhonesService {
       relations: ['user'],
     });
     if (existing) {
-      if (existing.deletedAt) {
-        existing.deletedAt = null;
-        await this.phoneRepo.save(existing);
-      }
+      // Re-verifying is a fresh opt-in: restore, record consent, clear any opt-out.
+      existing.deletedAt = null;
+      existing.consentAt = valid.consentAt;
+      existing.optedOutAt = null;
+      await this.phoneRepo.save(existing);
       await this.verificationRepo.delete({ userId, phone });
       return { verified: true, phoneId: existing.phoneId };
     }
@@ -100,6 +106,8 @@ export class PhonesService {
       phone,
       addedAt: new Date(),
       deletedAt: null,
+      consentAt: valid.consentAt,
+      optedOutAt: null,
     });
     await this.phoneRepo.save(newPhone);
     await this.verificationRepo.delete({ userId, phone });

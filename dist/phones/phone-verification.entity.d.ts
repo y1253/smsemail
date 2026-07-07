@@ -4,5 +4,6 @@ export declare class PhoneVerification {
     phone: string;
     code: string;
     expiresAt: Date;
+    consentAt: Date | null;
     createdAt: Date;
 }

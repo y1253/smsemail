@@ -13,6 +13,7 @@ exports.AddPhoneDto = void 0;
 const class_validator_1 = require("class-validator");
 class AddPhoneDto {
     phone;
+    consent;
 }
 exports.AddPhoneDto = AddPhoneDto;
 __decorate([
@@ -22,4 +23,9 @@ __decorate([
     (0, class_validator_1.MaxLength)(45),
     __metadata("design:type", String)
 ], AddPhoneDto.prototype, "phone", void 0);
+__decorate([
+    (0, class_validator_1.IsBoolean)(),
+    (0, class_validator_1.Equals)(true, { message: 'SMS consent is required' }),
+    __metadata("design:type", Boolean)
+], AddPhoneDto.prototype, "consent", void 0);
 //# sourceMappingURL=add-phone.dto.js.map

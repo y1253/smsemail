@@ -24,5 +24,11 @@ export class Phone {
 
   @Column({ name: 'deleted_at', type: 'datetime', nullable: true })
   deletedAt!: Date | null;
+
+  @Column({ name: 'consent_at', type: 'datetime', nullable: true })
+  consentAt!: Date | null;
+
+  @Column({ name: 'opted_out_at', type: 'datetime', nullable: true })
+  optedOutAt!: Date | null;
 }
 

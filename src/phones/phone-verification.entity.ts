@@ -22,6 +22,9 @@ export class PhoneVerification {
   @Column({ name: 'expires_at', type: 'datetime' })
   expiresAt!: Date;
 
+  @Column({ name: 'consent_at', type: 'datetime', nullable: true })
+  consentAt!: Date | null;
+
   @CreateDateColumn({ name: 'created_at', type: 'datetime' })
   createdAt!: Date;
 }

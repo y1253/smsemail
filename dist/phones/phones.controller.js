@@ -29,7 +29,7 @@ let PhonesController = class PhonesController {
         return this.phonesService.listPhonesForUser(user.user_id);
     }
     async sendCode(dto, user) {
-        return this.phonesService.sendVerificationCode(user.user_id, dto.phone);
+        return this.phonesService.sendVerificationCode(user.user_id, dto.phone, dto.consent);
     }
     async verify(dto, user) {
         return this.phonesService.verifyCode(user.user_id, dto.phone, dto.code);

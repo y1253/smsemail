@@ -92,6 +92,7 @@ export class WebhooksService {
         const sms = this.buildSms(msg.sender, msg.subject, summary, msg.attachmentCount, saved.messageId, email.email);
         const senderAddr = this.extractEmailAddress(msg.sender);
         for (const set of activeSets) {
+          if (set.phone.optedOutAt) continue; // number replied STOP — honor opt-out
           const filter = set.allowedSenders ?? [];
           if (filter.length > 0 && !filter.some((s) => s.email === senderAddr)) continue;
           await this.signalwireService.sendSms(set.phone.phone, sms);
@@ -112,6 +113,39 @@ export class WebhooksService {
     });
     if (!phone) {
       await this.signalwireService.sendSms(from, 'No active account found for this number.');
+      return;
+    }
+
+    // Carrier-required keywords (STOP/START/HELP) are handled first and always
+    // respond, independent of whether the number currently has an active set.
+    const keyword = body.trim().toUpperCase();
+    if (/^(STOP|STOPALL|UNSUBSCRIBE|CANCEL|QUIT|END)$/.test(keyword)) {
+      if (!phone.optedOutAt) {
+        phone.optedOutAt = new Date();
+        await this.phoneRepo.save(phone);
+      }
+      await this.signalwireService.sendSms(
+        from,
+        "SMSMail: You're unsubscribed and will get no more messages. Reply START to resubscribe.",
+      );
+      return;
+    }
+    if (/^(START|UNSTOP)$/.test(keyword)) {
+      if (phone.optedOutAt) {
+        phone.optedOutAt = null;
+        await this.phoneRepo.save(phone);
+      }
+      await this.signalwireService.sendSms(
+        from,
+        "SMSMail: You're resubscribed to SMSMail alerts. Reply HELP for help, STOP to unsubscribe.",
+      );
+      return;
+    }
+    if (keyword === 'HELP') {
+      await this.signalwireService.sendSms(
+        from,
+        'SMSMail email-to-SMS. Help: yechiel1253@gmail.com. Reply STOP to unsubscribe.\nCommands: R <msg> reply, R <#1234> <msg> reply to #1234, S <email> <msg> send.',
+      );
       return;
     }
 
@@ -197,11 +231,6 @@ export class WebhooksService {
           );
           await this.signalwireService.sendSms(from, this.buildSelectPrompt(emails));
         }
-      } else if (/^HELP$/i.test(trimmed)) {
-        await this.signalwireService.sendSms(
-          from,
-          'Email SMS Commands:\nR <msg> - reply to your latest email\nR <#1234> <msg> - reply to email #1234\nS <email> <msg> - send new email\nS <email>|<subject>|<msg> - send with custom subject\n(The #number at end of each notification is the email ID)',
-        );
       } else {
         await this.signalwireService.sendSms(from, 'Unknown command. Use R to reply, S to send, or HELP for instructions.');
       }
@@ -319,7 +348,9 @@ export class WebhooksService {
         ? 'Payment failed — SMS email forwarding paused. Update your payment method to resume.'
         : 'Your subscription was cancelled — SMS email forwarding has been stopped.';
 
-    await this.signalwireService.sendSms(set.phone.phone, warning);
+    if (!set.phone.optedOutAt) {
+      await this.signalwireService.sendSms(set.phone.phone, warning);
+    }
     set.deletedAt = new Date();
     await this.setRepo.save(set);
   }

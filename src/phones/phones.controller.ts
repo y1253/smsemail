@@ -27,7 +27,7 @@ export class PhonesController {
     @Body() dto: AddPhoneDto,
     @CurrentUser() user: JwtPayload,
   ) {
-    return this.phonesService.sendVerificationCode(user.user_id, dto.phone);
+    return this.phonesService.sendVerificationCode(user.user_id, dto.phone, dto.consent);
   }
 
   @Post('verify')
