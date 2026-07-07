@@ -5,5 +5,5 @@ export declare class OpenAiService implements OnModuleInit {
     private client;
     constructor(config: ConfigService);
     onModuleInit(): void;
-    summarize(body: string, budget: number): Promise<string>;
+    summarize(subject: string, body: string, budget: number): Promise<string>;
 }

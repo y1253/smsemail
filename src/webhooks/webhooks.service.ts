@@ -76,8 +76,8 @@ export class WebhooksService {
           continue;
         }
 
-        const budget = this.summaryBudget(msg.sender, msg.subject, msg.attachmentCount, email.email);
-        const summary = await this.openAiService.summarize(msg.body, budget);
+        const budget = this.summaryBudget(msg.sender, email.email);
+        const summary = await this.openAiService.summarize(msg.subject, msg.body, budget);
 
         const record = this.incomeMessageRepo.create({
           email,
@@ -89,7 +89,7 @@ export class WebhooksService {
         });
         const saved = await this.incomeMessageRepo.save(record);
 
-        const sms = this.buildSms(msg.sender, msg.subject, summary, msg.attachmentCount, saved.messageId, email.email);
+        const sms = this.buildSms(msg.sender, summary, msg.attachmentCount, saved.messageId, email.email);
         const senderAddr = this.extractEmailAddress(msg.sender);
         for (const set of activeSets) {
           if (set.phone.optedOutAt) continue; // number replied STOP — honor opt-out
@@ -393,18 +393,15 @@ export class WebhooksService {
     return raw.trim();
   }
 
-  private summaryBudget(sender: string, subject: string, attachmentCount: number, toEmail: string): number {
-    const cleanSubject = subject.replace(/^(re:\s*)*/i, '').replace(/<[^>]+>/g, '').trim();
+  private summaryBudget(sender: string, toEmail: string): number {
     const senderLen = Math.min(this.formatSender(sender).length, 40);
-    const subjectLen = Math.min(cleanSubject.length, 35);
     const emailLen = Math.min(toEmail.length, 30);
-    // Structure: "To: \nFrom: \nSubj: \n\n\n\n" = 22 chars; footer reserve = 20
-    return Math.max(10, 160 - 22 - emailLen - senderLen - subjectLen - 20);
+    // Structure: "To: \nFrom: \n\n\n\n" = 15 chars; footer reserve = 20
+    return Math.max(10, 160 - 15 - emailLen - senderLen - 20);
   }
 
   private buildSms(
     sender: string,
-    subject: string,
     summary: string,
     attachmentCount: number,
     messageId: number,
@@ -413,13 +410,11 @@ export class WebhooksService {
     const replyHint = `Reply: R ${messageId}`;
     const footer = attachmentCount > 0 ? `📎+${attachmentCount}  |  ${replyHint}` : replyHint;
     const s = this.formatSender(sender).slice(0, 40);
-    const cleanSubject = subject.replace(/^(re:\s*)*/i, '').replace(/<[^>]+>/g, '').trim();
-    const sub = cleanSubject.slice(0, 35);
     const to = toEmail.slice(0, 30);
     // Fit the summary to the exact room left after the real header + footer, so
     // any truncation lands on a word boundary (...) instead of mid-word.
-    const headerFooter = `To: ${to}\nFrom: ${s}\nSubj: ${sub}\n\n\n\n${footer}`;
+    const headerFooter = `To: ${to}\nFrom: ${s}\n\n\n\n${footer}`;
     const body = truncateClean(summary, Math.max(0, 160 - headerFooter.length));
-    return `To: ${to}\nFrom: ${s}\nSubj: ${sub}\n\n${body}\n\n${footer}`;
+    return `To: ${to}\nFrom: ${s}\n\n${body}\n\n${footer}`;
   }
 }
