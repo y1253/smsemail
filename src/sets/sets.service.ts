@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, Inject, Injectable, Logger, forwardRef } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, IsNull } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
@@ -29,6 +29,7 @@ export class SetsService {
     @InjectRepository(SetAllowedSender)
     private readonly senderRepo: Repository<SetAllowedSender>,
     private readonly config: ConfigService,
+    @Inject(forwardRef(() => EmailsService))
     private readonly emailsService: EmailsService,
     private readonly gmailService: GmailService,
     private readonly signalwireService: SignalwireService,
@@ -65,6 +66,16 @@ export class SetsService {
       throw new BadRequestException('Set not found for this user');
     }
 
+    await this.teardownSet(set);
+    return { deleted: true };
+  }
+
+  /**
+   * Cancel the set's Stripe subscription, stop the Gmail watch, and soft-delete
+   * the set. Errors from Stripe/Gmail are logged but never block the soft-delete.
+   * The set must be loaded with its `email` relation.
+   */
+  private async teardownSet(set: EmailPhoneSet): Promise<void> {
     if (set.stripeSubscriptionId && set.stripeSubscriptionId !== 'PROMO') {
       try {
         await this.stripe.subscriptions.cancel(set.stripeSubscriptionId);
@@ -73,16 +84,47 @@ export class SetsService {
       }
     }
 
-    try {
-      const refreshToken = this.emailsService.decrypt(set.email.refreshToken);
-      await this.gmailService.unwatchGmail(refreshToken);
-    } catch (err) {
-      this.logger.error(`Failed to unwatch Gmail for set ${setId}: ${err}`);
+    if (set.email?.refreshToken) {
+      try {
+        const refreshToken = this.emailsService.decrypt(set.email.refreshToken);
+        await this.gmailService.unwatchGmail(refreshToken);
+      } catch (err) {
+        this.logger.error(`Failed to unwatch Gmail for set ${set.setId}: ${err}`);
+      }
     }
 
     set.deletedAt = new Date();
     await this.setRepo.save(set);
-    return { deleted: true };
+  }
+
+  /**
+   * Tear down every active set that uses the given email (owned by userId).
+   * Returns the number of sets torn down.
+   */
+  async teardownSetsForEmail(userId: number, emailId: number): Promise<number> {
+    const sets = await this.setRepo.find({
+      where: { email: { emailId, user: { userId } }, deletedAt: IsNull() },
+      relations: ['email', 'email.user', 'phone'],
+    });
+    for (const set of sets) {
+      await this.teardownSet(set);
+    }
+    return sets.length;
+  }
+
+  /**
+   * Tear down every active set that uses the given phone (owned by userId).
+   * Returns the number of sets torn down.
+   */
+  async teardownSetsForPhone(userId: number, phoneId: number): Promise<number> {
+    const sets = await this.setRepo.find({
+      where: { phone: { phoneId }, email: { user: { userId } }, deletedAt: IsNull() },
+      relations: ['email', 'email.user', 'phone'],
+    });
+    for (const set of sets) {
+      await this.teardownSet(set);
+    }
+    return sets.length;
   }
 
   async createSetForUser(
@@ -223,6 +265,7 @@ export class SetsService {
   }
 
   private async refreshGmailWatch(email: Email): Promise<void> {
+    if (!email.refreshToken) return;
     try {
       const refreshToken = this.emailsService.decrypt(email.refreshToken);
       const { historyId, expiry } = await this.gmailService.watchGmail(refreshToken);

@@ -1,8 +1,9 @@
-import { Body, Controller, Get, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Post, UseGuards } from '@nestjs/common';
 import { EmailsService } from './emails.service';
 import { AuthGuard } from '../auth/auth.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { ConnectGoogleEmailDto } from './dto/connect-google-email.dto';
+import { DeleteEmailDto } from './dto/delete-email.dto';
 
 type JwtPayload = {
   user_id: number;
@@ -26,6 +27,15 @@ export class EmailsController {
     @CurrentUser() user: JwtPayload,
   ) {
     return this.emailsService.connectGoogleEmail(dto, user);
+  }
+
+  @Delete('delete')
+  @UseGuards(AuthGuard)
+  async deleteEmail(
+    @Body() dto: DeleteEmailDto,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.emailsService.deleteEmailForUser(user.user_id, dto.emailId);
   }
 }
 

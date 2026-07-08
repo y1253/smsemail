@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { User } from '../users/user.entity';
 import { Email } from '../emails/email.entity';
@@ -15,11 +15,11 @@ import { GmailModule } from '../gmail/gmail.module';
   imports: [
     TypeOrmModule.forFeature([User, Email, Phone, EmailPhoneSet, SetAllowedSender]),
     AuthModule,
-    EmailsModule,
+    forwardRef(() => EmailsModule),
     GmailModule,
   ],
   controllers: [SetsController],
   providers: [SetsService],
+  exports: [SetsService],
 })
 export class SetsModule {}
-

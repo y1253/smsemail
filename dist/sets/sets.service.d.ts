@@ -39,6 +39,9 @@ export declare class SetsService {
     deleteSetForUser(userId: number, setId: number): Promise<{
         deleted: true;
     }>;
+    private teardownSet;
+    teardownSetsForEmail(userId: number, emailId: number): Promise<number>;
+    teardownSetsForPhone(userId: number, phoneId: number): Promise<number>;
     createSetForUser(userId: number, emailId: number, phoneId: number, promoCode?: string): Promise<{
         setId: number;
     }>;

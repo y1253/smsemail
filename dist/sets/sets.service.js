@@ -81,6 +81,10 @@ let SetsService = SetsService_1 = class SetsService {
         if (!set || set.email.user.userId !== userId) {
             throw new common_1.BadRequestException('Set not found for this user');
         }
+        await this.teardownSet(set);
+        return { deleted: true };
+    }
+    async teardownSet(set) {
         if (set.stripeSubscriptionId && set.stripeSubscriptionId !== 'PROMO') {
             try {
                 await this.stripe.subscriptions.cancel(set.stripeSubscriptionId);
@@ -89,16 +93,37 @@ let SetsService = SetsService_1 = class SetsService {
                 this.logger.error(`Failed to cancel Stripe subscription ${set.stripeSubscriptionId}: ${err}`);
             }
         }
-        try {
-            const refreshToken = this.emailsService.decrypt(set.email.refreshToken);
-            await this.gmailService.unwatchGmail(refreshToken);
-        }
-        catch (err) {
-            this.logger.error(`Failed to unwatch Gmail for set ${setId}: ${err}`);
+        if (set.email?.refreshToken) {
+            try {
+                const refreshToken = this.emailsService.decrypt(set.email.refreshToken);
+                await this.gmailService.unwatchGmail(refreshToken);
+            }
+            catch (err) {
+                this.logger.error(`Failed to unwatch Gmail for set ${set.setId}: ${err}`);
+            }
         }
         set.deletedAt = new Date();
         await this.setRepo.save(set);
-        return { deleted: true };
+    }
+    async teardownSetsForEmail(userId, emailId) {
+        const sets = await this.setRepo.find({
+            where: { email: { emailId, user: { userId } }, deletedAt: (0, typeorm_2.IsNull)() },
+            relations: ['email', 'email.user', 'phone'],
+        });
+        for (const set of sets) {
+            await this.teardownSet(set);
+        }
+        return sets.length;
+    }
+    async teardownSetsForPhone(userId, phoneId) {
+        const sets = await this.setRepo.find({
+            where: { phone: { phoneId }, email: { user: { userId } }, deletedAt: (0, typeorm_2.IsNull)() },
+            relations: ['email', 'email.user', 'phone'],
+        });
+        for (const set of sets) {
+            await this.teardownSet(set);
+        }
+        return sets.length;
     }
     async createSetForUser(userId, emailId, phoneId, promoCode) {
         const user = await this.userRepo.findOne({ where: { userId } });
@@ -213,6 +238,8 @@ let SetsService = SetsService_1 = class SetsService {
         return { updated: true };
     }
     async refreshGmailWatch(email) {
+        if (!email.refreshToken)
+            return;
         try {
             const refreshToken = this.emailsService.decrypt(email.refreshToken);
             const { historyId, expiry } = await this.gmailService.watchGmail(refreshToken);
@@ -233,6 +260,7 @@ exports.SetsService = SetsService = SetsService_1 = __decorate([
     __param(2, (0, typeorm_1.InjectRepository)(phone_entity_1.Phone)),
     __param(3, (0, typeorm_1.InjectRepository)(email_phone_set_entity_1.EmailPhoneSet)),
     __param(4, (0, typeorm_1.InjectRepository)(set_allowed_sender_entity_1.SetAllowedSender)),
+    __param(6, (0, common_1.Inject)((0, common_1.forwardRef)(() => emails_service_1.EmailsService))),
     __metadata("design:paramtypes", [typeorm_2.Repository,
         typeorm_2.Repository,
         typeorm_2.Repository,

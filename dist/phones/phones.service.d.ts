@@ -1,14 +1,18 @@
 import { Repository } from 'typeorm';
 import { User } from '../users/user.entity';
 import { Phone } from './phone.entity';
+import { DeletedPhone } from './deleted-phone.entity';
 import { PhoneVerification } from './phone-verification.entity';
 import { SignalwireService } from '../signalwire/signalwire.service';
+import { SetsService } from '../sets/sets.service';
 export declare class PhonesService {
     private readonly userRepo;
     private readonly phoneRepo;
+    private readonly deletedPhoneRepo;
     private readonly verificationRepo;
     private readonly signalwireService;
-    constructor(userRepo: Repository<User>, phoneRepo: Repository<Phone>, verificationRepo: Repository<PhoneVerification>, signalwireService: SignalwireService);
+    private readonly setsService;
+    constructor(userRepo: Repository<User>, phoneRepo: Repository<Phone>, deletedPhoneRepo: Repository<DeletedPhone>, verificationRepo: Repository<PhoneVerification>, signalwireService: SignalwireService, setsService: SetsService);
     listPhonesForUser(userId: number): Promise<{
         phoneId: number;
         phone: string;

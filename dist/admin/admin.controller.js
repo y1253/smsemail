@@ -33,6 +33,10 @@ let AdminController = class AdminController {
         this.assertAdmin(password);
         return this.adminService.getAllAccounts();
     }
+    async getDeleted(password) {
+        this.assertAdmin(password);
+        return this.adminService.getDeletedContacts();
+    }
     async getAccount(password, userId) {
         this.assertAdmin(password);
         return this.adminService.getAccountDetail(userId);
@@ -46,6 +50,13 @@ __decorate([
     __metadata("design:paramtypes", [String]),
     __metadata("design:returntype", Promise)
 ], AdminController.prototype, "getAccounts", null);
+__decorate([
+    (0, common_1.Get)('deleted'),
+    __param(0, (0, common_1.Headers)('x-admin-password')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String]),
+    __metadata("design:returntype", Promise)
+], AdminController.prototype, "getDeleted", null);
 __decorate([
     (0, common_1.Get)('accounts/:userId'),
     __param(0, (0, common_1.Headers)('x-admin-password')),

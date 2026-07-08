@@ -5,7 +5,7 @@ export declare class Email {
     emailId: number;
     user: User;
     email: string;
-    refreshToken: string;
+    refreshToken: string | null;
     addedAt: Date;
     deletedAt: Date | null;
     lastHistoryId: string | null;

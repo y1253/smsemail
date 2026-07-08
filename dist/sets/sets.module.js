@@ -27,11 +27,12 @@ exports.SetsModule = SetsModule = __decorate([
         imports: [
             typeorm_1.TypeOrmModule.forFeature([user_entity_1.User, email_entity_1.Email, phone_entity_1.Phone, email_phone_set_entity_1.EmailPhoneSet, set_allowed_sender_entity_1.SetAllowedSender]),
             auth_module_1.AuthModule,
-            emails_module_1.EmailsModule,
+            (0, common_1.forwardRef)(() => emails_module_1.EmailsModule),
             gmail_module_1.GmailModule,
         ],
         controllers: [sets_controller_1.SetsController],
         providers: [sets_service_1.SetsService],
+        exports: [sets_service_1.SetsService],
     })
 ], SetsModule);
 //# sourceMappingURL=sets.module.js.map

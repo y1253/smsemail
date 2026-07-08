@@ -16,6 +16,22 @@ export declare class AdminController {
         emails: string[];
         phones: string[];
     }[]>;
+    getDeleted(password: string): Promise<{
+        emails: {
+            userId: number;
+            value: string;
+            originalId: number;
+            createdAt: Date;
+            deletedAt: Date;
+        }[];
+        phones: {
+            userId: number;
+            value: string;
+            originalId: number;
+            createdAt: Date;
+            deletedAt: Date;
+        }[];
+    }>;
     getAccount(password: string, userId: number): Promise<{
         userId: number;
         name: string;

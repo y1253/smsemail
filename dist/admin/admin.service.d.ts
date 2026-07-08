@@ -2,11 +2,31 @@ import { Repository } from 'typeorm';
 import { User } from '../users/user.entity';
 import { EmailPhoneSet } from '../sets/email-phone-set.entity';
 import { Transaction } from '../transactions/transaction.entity';
+import { DeletedEmail } from '../emails/deleted-email.entity';
+import { DeletedPhone } from '../phones/deleted-phone.entity';
 export declare class AdminService {
     private readonly userRepo;
     private readonly setRepo;
     private readonly transactionRepo;
-    constructor(userRepo: Repository<User>, setRepo: Repository<EmailPhoneSet>, transactionRepo: Repository<Transaction>);
+    private readonly deletedEmailRepo;
+    private readonly deletedPhoneRepo;
+    constructor(userRepo: Repository<User>, setRepo: Repository<EmailPhoneSet>, transactionRepo: Repository<Transaction>, deletedEmailRepo: Repository<DeletedEmail>, deletedPhoneRepo: Repository<DeletedPhone>);
+    getDeletedContacts(): Promise<{
+        emails: {
+            userId: number;
+            value: string;
+            originalId: number;
+            createdAt: Date;
+            deletedAt: Date;
+        }[];
+        phones: {
+            userId: number;
+            value: string;
+            originalId: number;
+            createdAt: Date;
+            deletedAt: Date;
+        }[];
+    }>;
     getAllAccounts(): Promise<{
         userId: number;
         name: string;

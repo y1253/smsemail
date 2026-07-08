@@ -44,30 +44,38 @@ var __metadata = (this && this.__metadata) || function (k, v) {
 var __param = (this && this.__param) || function (paramIndex, decorator) {
     return function (target, key) { decorator(target, key, paramIndex); }
 };
+var EmailsService_1;
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.EmailsService = void 0;
 const common_1 = require("@nestjs/common");
 const typeorm_1 = require("@nestjs/typeorm");
 const typeorm_2 = require("typeorm");
 const email_entity_1 = require("./email.entity");
+const deleted_email_entity_1 = require("./deleted-email.entity");
 const user_entity_1 = require("../users/user.entity");
 const config_1 = require("@nestjs/config");
 const crypto = __importStar(require("crypto"));
 const google_auth_library_1 = require("google-auth-library");
 const gmail_service_1 = require("../gmail/gmail.service");
-let EmailsService = class EmailsService {
+const sets_service_1 = require("../sets/sets.service");
+let EmailsService = EmailsService_1 = class EmailsService {
     emailRepo;
+    deletedEmailRepo;
     userRepo;
     config;
     googleClient;
     gmailService;
+    setsService;
     encryptionKey;
-    constructor(emailRepo, userRepo, config, googleClient, gmailService) {
+    logger = new common_1.Logger(EmailsService_1.name);
+    constructor(emailRepo, deletedEmailRepo, userRepo, config, googleClient, gmailService, setsService) {
         this.emailRepo = emailRepo;
+        this.deletedEmailRepo = deletedEmailRepo;
         this.userRepo = userRepo;
         this.config = config;
         this.googleClient = googleClient;
         this.gmailService = gmailService;
+        this.setsService = setsService;
         const key = this.config.get('REFRESH_TOKEN_KEY');
         if (!key || key.length < 32) {
             throw new Error('REFRESH_TOKEN_KEY must be set and at least 32 characters');
@@ -118,8 +126,7 @@ let EmailsService = class EmailsService {
             email.deletedAt = null;
         }
         await this.emailRepo.save(email);
-        const decrypted = this.decrypt(email.refreshToken);
-        const { historyId, expiry } = await this.gmailService.watchGmail(decrypted);
+        const { historyId, expiry } = await this.gmailService.watchGmail(tokens.refresh_token);
         email.lastHistoryId = historyId;
         email.watchExpiry = expiry;
         await this.emailRepo.save(email);
@@ -134,6 +141,38 @@ let EmailsService = class EmailsService {
             order: { addedAt: 'ASC' },
         });
         return emails.map((e) => ({ emailId: e.emailId, email: e.email, addedAt: e.addedAt }));
+    }
+    async deleteEmailForUser(userId, emailId) {
+        const email = await this.emailRepo.findOne({
+            where: { emailId },
+            relations: ['user'],
+        });
+        if (!email || email.user.userId !== userId) {
+            throw new common_1.BadRequestException('Email not found for this user');
+        }
+        if (email.deletedAt) {
+            return { deleted: true, emailId: email.emailId };
+        }
+        await this.setsService.teardownSetsForEmail(userId, emailId);
+        if (email.refreshToken) {
+            try {
+                await this.gmailService.unwatchGmail(this.decrypt(email.refreshToken));
+            }
+            catch (err) {
+                this.logger.error(`Failed to unwatch Gmail for email ${emailId}: ${err}`);
+            }
+        }
+        await this.deletedEmailRepo.save(this.deletedEmailRepo.create({
+            userId,
+            originalEmailId: email.emailId,
+            email: email.email,
+            createdAt: email.addedAt,
+            deletedAt: new Date(),
+        }));
+        email.refreshToken = null;
+        email.deletedAt = new Date();
+        await this.emailRepo.save(email);
+        return { deleted: true, emailId: email.emailId };
     }
     decrypt(encrypted) {
         const buf = Buffer.from(encrypted, 'base64');
@@ -153,15 +192,19 @@ let EmailsService = class EmailsService {
     }
 };
 exports.EmailsService = EmailsService;
-exports.EmailsService = EmailsService = __decorate([
+exports.EmailsService = EmailsService = EmailsService_1 = __decorate([
     (0, common_1.Injectable)(),
     __param(0, (0, typeorm_1.InjectRepository)(email_entity_1.Email)),
-    __param(1, (0, typeorm_1.InjectRepository)(user_entity_1.User)),
-    __param(3, (0, common_1.Inject)('GOOGLE_CLIENT')),
+    __param(1, (0, typeorm_1.InjectRepository)(deleted_email_entity_1.DeletedEmail)),
+    __param(2, (0, typeorm_1.InjectRepository)(user_entity_1.User)),
+    __param(4, (0, common_1.Inject)('GOOGLE_CLIENT')),
+    __param(6, (0, common_1.Inject)((0, common_1.forwardRef)(() => sets_service_1.SetsService))),
     __metadata("design:paramtypes", [typeorm_2.Repository,
+        typeorm_2.Repository,
         typeorm_2.Repository,
         config_1.ConfigService,
         google_auth_library_1.OAuth2Client,
-        gmail_service_1.GmailService])
+        gmail_service_1.GmailService,
+        sets_service_1.SetsService])
 ], EmailsService);
 //# sourceMappingURL=emails.service.js.map

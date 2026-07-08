@@ -11,20 +11,23 @@ const common_1 = require("@nestjs/common");
 const typeorm_1 = require("@nestjs/typeorm");
 const user_entity_1 = require("../users/user.entity");
 const phone_entity_1 = require("./phone.entity");
+const deleted_phone_entity_1 = require("./deleted-phone.entity");
 const phone_verification_entity_1 = require("./phone-verification.entity");
 const phones_service_1 = require("./phones.service");
 const phones_controller_1 = require("./phones.controller");
 const auth_module_1 = require("../auth/auth.module");
 const signalwire_module_1 = require("../signalwire/signalwire.module");
+const sets_module_1 = require("../sets/sets.module");
 let PhonesModule = class PhonesModule {
 };
 exports.PhonesModule = PhonesModule;
 exports.PhonesModule = PhonesModule = __decorate([
     (0, common_1.Module)({
         imports: [
-            typeorm_1.TypeOrmModule.forFeature([user_entity_1.User, phone_entity_1.Phone, phone_verification_entity_1.PhoneVerification]),
+            typeorm_1.TypeOrmModule.forFeature([user_entity_1.User, phone_entity_1.Phone, deleted_phone_entity_1.DeletedPhone, phone_verification_entity_1.PhoneVerification]),
             auth_module_1.AuthModule,
             signalwire_module_1.SignalwireModule,
+            sets_module_1.SetsModule,
         ],
         controllers: [phones_controller_1.PhonesController],
         providers: [phones_service_1.PhonesService],

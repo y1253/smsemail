@@ -18,20 +18,26 @@ const typeorm_1 = require("@nestjs/typeorm");
 const typeorm_2 = require("typeorm");
 const user_entity_1 = require("../users/user.entity");
 const phone_entity_1 = require("./phone.entity");
+const deleted_phone_entity_1 = require("./deleted-phone.entity");
 const phone_verification_entity_1 = require("./phone-verification.entity");
 const signalwire_service_1 = require("../signalwire/signalwire.service");
+const sets_service_1 = require("../sets/sets.service");
 const CODE_LENGTH = 6;
 const CODE_EXPIRY_MINUTES = 10;
 let PhonesService = class PhonesService {
     userRepo;
     phoneRepo;
+    deletedPhoneRepo;
     verificationRepo;
     signalwireService;
-    constructor(userRepo, phoneRepo, verificationRepo, signalwireService) {
+    setsService;
+    constructor(userRepo, phoneRepo, deletedPhoneRepo, verificationRepo, signalwireService, setsService) {
         this.userRepo = userRepo;
         this.phoneRepo = phoneRepo;
+        this.deletedPhoneRepo = deletedPhoneRepo;
         this.verificationRepo = verificationRepo;
         this.signalwireService = signalwireService;
+        this.setsService = setsService;
     }
     async listPhonesForUser(userId) {
         const phones = await this.phoneRepo.find({
@@ -110,6 +116,14 @@ let PhonesService = class PhonesService {
         if (phone.deletedAt) {
             return { deleted: true, phoneId: phone.phoneId };
         }
+        await this.setsService.teardownSetsForPhone(userId, phoneId);
+        await this.deletedPhoneRepo.save(this.deletedPhoneRepo.create({
+            userId,
+            originalPhoneId: phone.phoneId,
+            phone: phone.phone,
+            createdAt: phone.addedAt,
+            deletedAt: new Date(),
+        }));
         phone.deletedAt = new Date();
         await this.phoneRepo.save(phone);
         return { deleted: true, phoneId: phone.phoneId };
@@ -128,10 +142,13 @@ exports.PhonesService = PhonesService = __decorate([
     (0, common_1.Injectable)(),
     __param(0, (0, typeorm_1.InjectRepository)(user_entity_1.User)),
     __param(1, (0, typeorm_1.InjectRepository)(phone_entity_1.Phone)),
-    __param(2, (0, typeorm_1.InjectRepository)(phone_verification_entity_1.PhoneVerification)),
+    __param(2, (0, typeorm_1.InjectRepository)(deleted_phone_entity_1.DeletedPhone)),
+    __param(3, (0, typeorm_1.InjectRepository)(phone_verification_entity_1.PhoneVerification)),
     __metadata("design:paramtypes", [typeorm_2.Repository,
         typeorm_2.Repository,
         typeorm_2.Repository,
-        signalwire_service_1.SignalwireService])
+        typeorm_2.Repository,
+        signalwire_service_1.SignalwireService,
+        sets_service_1.SetsService])
 ], PhonesService);
 //# sourceMappingURL=phones.service.js.map

@@ -53,7 +53,7 @@ export class WebhooksService {
     const email = await this.emailRepo.findOne({
       where: { email: emailAddress, deletedAt: IsNull() },
     });
-    if (!email?.lastHistoryId) return;
+    if (!email?.lastHistoryId || !email.refreshToken) return;
 
     const refreshToken = this.emailsService.decrypt(email.refreshToken);
     const rawMessages = await this.gmailService.getNewMessages(refreshToken, email.lastHistoryId);
@@ -260,6 +260,13 @@ export class WebhooksService {
     msg: IncomeMessage,
     replyText: string,
   ): Promise<void> {
+    if (!email.refreshToken) {
+      await this.signalwireService.sendSms(
+        from,
+        `Gmail connection for ${email.email} needs reconnecting on the dashboard.`,
+      );
+      return;
+    }
     const refreshToken = this.emailsService.decrypt(email.refreshToken);
     try {
       await this.gmailService.sendReply(refreshToken, msg.gmailThreadId, msg.sender, msg.subject, replyText, email.email);
@@ -278,6 +285,13 @@ export class WebhooksService {
     subject: string,
     body: string,
   ): Promise<void> {
+    if (!email.refreshToken) {
+      await this.signalwireService.sendSms(
+        from,
+        `Gmail connection for ${email.email} needs reconnecting on the dashboard.`,
+      );
+      return;
+    }
     const refreshToken = this.emailsService.decrypt(email.refreshToken);
     try {
       await this.gmailService.sendEmail(refreshToken, email.email, to, subject, body);
@@ -336,11 +350,13 @@ export class WebhooksService {
     });
     if (!set) return;
 
-    try {
-      const refreshToken = this.emailsService.decrypt(set.email.refreshToken);
-      await this.gmailService.unwatchGmail(refreshToken);
-    } catch (err) {
-      this.logger.error(`Failed to unwatch Gmail for set ${set.setId}: ${err}`);
+    if (set.email.refreshToken) {
+      try {
+        const refreshToken = this.emailsService.decrypt(set.email.refreshToken);
+        await this.gmailService.unwatchGmail(refreshToken);
+      } catch (err) {
+        this.logger.error(`Failed to unwatch Gmail for set ${set.setId}: ${err}`);
+      }
     }
 
     const warning =
@@ -366,6 +382,7 @@ export class WebhooksService {
       .getMany();
 
     for (const email of emails) {
+      if (!email.refreshToken) continue;
       try {
         const refreshToken = this.emailsService.decrypt(email.refreshToken);
         const { historyId, expiry } = await this.gmailService.watchGmail(refreshToken);

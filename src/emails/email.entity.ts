@@ -22,8 +22,8 @@ export class Email {
   @Column({ name: 'email', length: 145 })
   email!: string;
 
-  @Column({ name: 'refresh_token', length: 512 })
-  refreshToken!: string;
+  @Column({ name: 'refresh_token', type: 'varchar', length: 512, nullable: true })
+  refreshToken!: string | null;
 
   @Column({ name: 'added_at', type: 'datetime' })
   addedAt!: Date;

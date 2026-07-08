@@ -13,6 +13,8 @@ import { Subscription } from '../subscriptions/subscription.entity';
 import { EmailPhoneSet } from '../sets/email-phone-set.entity';
 import { SetAllowedSender } from '../sets/set-allowed-sender.entity';
 import { PendingSmsCommand } from '../webhooks/pending-sms-command.entity';
+import { DeletedEmail } from '../emails/deleted-email.entity';
+import { DeletedPhone } from '../phones/deleted-phone.entity';
 
 @Module({
   imports: [
@@ -25,7 +27,7 @@ import { PendingSmsCommand } from '../webhooks/pending-sms-command.entity';
       password: '12345',
       database: 'smsemail',
       synchronize: true,
-      entities: [User, Email, Phone, PhoneVerification, Transaction, Subscription, IncomeMessage, OutMessage, EmailPhoneSet, SetAllowedSender, PendingSmsCommand],
+      entities: [User, Email, Phone, PhoneVerification, Transaction, Subscription, IncomeMessage, OutMessage, EmailPhoneSet, SetAllowedSender, PendingSmsCommand, DeletedEmail, DeletedPhone],
 
     }),
   ],

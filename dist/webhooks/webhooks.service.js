@@ -70,7 +70,7 @@ let WebhooksService = WebhooksService_1 = class WebhooksService {
         const email = await this.emailRepo.findOne({
             where: { email: emailAddress, deletedAt: (0, typeorm_2.IsNull)() },
         });
-        if (!email?.lastHistoryId)
+        if (!email?.lastHistoryId || !email.refreshToken)
             return;
         const refreshToken = this.emailsService.decrypt(email.refreshToken);
         const rawMessages = await this.gmailService.getNewMessages(refreshToken, email.lastHistoryId);
@@ -251,6 +251,10 @@ let WebhooksService = WebhooksService_1 = class WebhooksService {
         return { to: rest.slice(0, spaceIdx), subject: 'Message from SMS', body: rest.slice(spaceIdx + 1) };
     }
     async replyToMessage(from, email, msg, replyText) {
+        if (!email.refreshToken) {
+            await this.signalwireService.sendSms(from, `Gmail connection for ${email.email} needs reconnecting on the dashboard.`);
+            return;
+        }
         const refreshToken = this.emailsService.decrypt(email.refreshToken);
         try {
             await this.gmailService.sendReply(refreshToken, msg.gmailThreadId, msg.sender, msg.subject, replyText, email.email);
@@ -262,6 +266,10 @@ let WebhooksService = WebhooksService_1 = class WebhooksService {
         await this.signalwireService.sendSms(from, `Sent to ${msg.sender}`);
     }
     async sendNewEmail(from, email, to, subject, body) {
+        if (!email.refreshToken) {
+            await this.signalwireService.sendSms(from, `Gmail connection for ${email.email} needs reconnecting on the dashboard.`);
+            return;
+        }
         const refreshToken = this.emailsService.decrypt(email.refreshToken);
         try {
             await this.gmailService.sendEmail(refreshToken, email.email, to, subject, body);
@@ -310,12 +318,14 @@ let WebhooksService = WebhooksService_1 = class WebhooksService {
         });
         if (!set)
             return;
-        try {
-            const refreshToken = this.emailsService.decrypt(set.email.refreshToken);
-            await this.gmailService.unwatchGmail(refreshToken);
-        }
-        catch (err) {
-            this.logger.error(`Failed to unwatch Gmail for set ${set.setId}: ${err}`);
+        if (set.email.refreshToken) {
+            try {
+                const refreshToken = this.emailsService.decrypt(set.email.refreshToken);
+                await this.gmailService.unwatchGmail(refreshToken);
+            }
+            catch (err) {
+                this.logger.error(`Failed to unwatch Gmail for set ${set.setId}: ${err}`);
+            }
         }
         const warning = event.type === 'invoice.payment_failed'
             ? 'Payment failed — SMS email forwarding paused. Update your payment method to resume.'
@@ -335,6 +345,8 @@ let WebhooksService = WebhooksService_1 = class WebhooksService {
             .andWhere('email.watch_expiry <= :deadline', { deadline })
             .getMany();
         for (const email of emails) {
+            if (!email.refreshToken)
+                continue;
             try {
                 const refreshToken = this.emailsService.decrypt(email.refreshToken);
                 const { historyId, expiry } = await this.gmailService.watchGmail(refreshToken);

@@ -18,6 +18,7 @@ const emails_service_1 = require("./emails.service");
 const auth_guard_1 = require("../auth/auth.guard");
 const current_user_decorator_1 = require("../auth/current-user.decorator");
 const connect_google_email_dto_1 = require("./dto/connect-google-email.dto");
+const delete_email_dto_1 = require("./dto/delete-email.dto");
 let EmailsController = class EmailsController {
     emailsService;
     constructor(emailsService) {
@@ -28,6 +29,9 @@ let EmailsController = class EmailsController {
     }
     async connectGoogleEmail(dto, user) {
         return this.emailsService.connectGoogleEmail(dto, user);
+    }
+    async deleteEmail(dto, user) {
+        return this.emailsService.deleteEmailForUser(user.user_id, dto.emailId);
     }
 };
 exports.EmailsController = EmailsController;
@@ -48,6 +52,15 @@ __decorate([
     __metadata("design:paramtypes", [connect_google_email_dto_1.ConnectGoogleEmailDto, Object]),
     __metadata("design:returntype", Promise)
 ], EmailsController.prototype, "connectGoogleEmail", null);
+__decorate([
+    (0, common_1.Delete)('delete'),
+    (0, common_1.UseGuards)(auth_guard_1.AuthGuard),
+    __param(0, (0, common_1.Body)()),
+    __param(1, (0, current_user_decorator_1.CurrentUser)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [delete_email_dto_1.DeleteEmailDto, Object]),
+    __metadata("design:returntype", Promise)
+], EmailsController.prototype, "deleteEmail", null);
 exports.EmailsController = EmailsController = __decorate([
     (0, common_1.Controller)('emails'),
     __metadata("design:paramtypes", [emails_service_1.EmailsService])

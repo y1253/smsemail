@@ -4,6 +4,8 @@ import { Repository } from 'typeorm';
 import { User } from '../users/user.entity';
 import { EmailPhoneSet } from '../sets/email-phone-set.entity';
 import { Transaction } from '../transactions/transaction.entity';
+import { DeletedEmail } from '../emails/deleted-email.entity';
+import { DeletedPhone } from '../phones/deleted-phone.entity';
 
 @Injectable()
 export class AdminService {
@@ -14,7 +16,34 @@ export class AdminService {
     private readonly setRepo: Repository<EmailPhoneSet>,
     @InjectRepository(Transaction)
     private readonly transactionRepo: Repository<Transaction>,
+    @InjectRepository(DeletedEmail)
+    private readonly deletedEmailRepo: Repository<DeletedEmail>,
+    @InjectRepository(DeletedPhone)
+    private readonly deletedPhoneRepo: Repository<DeletedPhone>,
   ) {}
+
+  async getDeletedContacts() {
+    const [emails, phones] = await Promise.all([
+      this.deletedEmailRepo.find({ order: { deletedAt: 'DESC' } }),
+      this.deletedPhoneRepo.find({ order: { deletedAt: 'DESC' } }),
+    ]);
+    return {
+      emails: emails.map((e) => ({
+        userId: e.userId,
+        value: e.email,
+        originalId: e.originalEmailId,
+        createdAt: e.createdAt,
+        deletedAt: e.deletedAt,
+      })),
+      phones: phones.map((p) => ({
+        userId: p.userId,
+        value: p.phone,
+        originalId: p.originalPhoneId,
+        createdAt: p.createdAt,
+        deletedAt: p.deletedAt,
+      })),
+    };
+  }
 
   async getAllAccounts() {
     const users = await this.userRepo

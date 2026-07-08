@@ -3,8 +3,10 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, IsNull } from 'typeorm';
 import { User } from '../users/user.entity';
 import { Phone } from './phone.entity';
+import { DeletedPhone } from './deleted-phone.entity';
 import { PhoneVerification } from './phone-verification.entity';
 import { SignalwireService } from '../signalwire/signalwire.service';
+import { SetsService } from '../sets/sets.service';
 
 const CODE_LENGTH = 6;
 const CODE_EXPIRY_MINUTES = 10;
@@ -16,9 +18,12 @@ export class PhonesService {
     private readonly userRepo: Repository<User>,
     @InjectRepository(Phone)
     private readonly phoneRepo: Repository<Phone>,
+    @InjectRepository(DeletedPhone)
+    private readonly deletedPhoneRepo: Repository<DeletedPhone>,
     @InjectRepository(PhoneVerification)
     private readonly verificationRepo: Repository<PhoneVerification>,
     private readonly signalwireService: SignalwireService,
+    private readonly setsService: SetsService,
   ) {}
 
   /**
@@ -131,6 +136,21 @@ export class PhonesService {
     if (phone.deletedAt) {
       return { deleted: true, phoneId: phone.phoneId };
     }
+
+    // Cascade: tear down any active sets using this phone (cancels their
+    // Stripe subscriptions and stops the associated Gmail watch).
+    await this.setsService.teardownSetsForPhone(userId, phoneId);
+
+    // Archive the deletion for admin review.
+    await this.deletedPhoneRepo.save(
+      this.deletedPhoneRepo.create({
+        userId,
+        originalPhoneId: phone.phoneId,
+        phone: phone.phone,
+        createdAt: phone.addedAt,
+        deletedAt: new Date(),
+      }),
+    );
 
     phone.deletedAt = new Date();
     await this.phoneRepo.save(phone);

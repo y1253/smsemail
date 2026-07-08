@@ -19,14 +19,42 @@ const typeorm_2 = require("typeorm");
 const user_entity_1 = require("../users/user.entity");
 const email_phone_set_entity_1 = require("../sets/email-phone-set.entity");
 const transaction_entity_1 = require("../transactions/transaction.entity");
+const deleted_email_entity_1 = require("../emails/deleted-email.entity");
+const deleted_phone_entity_1 = require("../phones/deleted-phone.entity");
 let AdminService = class AdminService {
     userRepo;
     setRepo;
     transactionRepo;
-    constructor(userRepo, setRepo, transactionRepo) {
+    deletedEmailRepo;
+    deletedPhoneRepo;
+    constructor(userRepo, setRepo, transactionRepo, deletedEmailRepo, deletedPhoneRepo) {
         this.userRepo = userRepo;
         this.setRepo = setRepo;
         this.transactionRepo = transactionRepo;
+        this.deletedEmailRepo = deletedEmailRepo;
+        this.deletedPhoneRepo = deletedPhoneRepo;
+    }
+    async getDeletedContacts() {
+        const [emails, phones] = await Promise.all([
+            this.deletedEmailRepo.find({ order: { deletedAt: 'DESC' } }),
+            this.deletedPhoneRepo.find({ order: { deletedAt: 'DESC' } }),
+        ]);
+        return {
+            emails: emails.map((e) => ({
+                userId: e.userId,
+                value: e.email,
+                originalId: e.originalEmailId,
+                createdAt: e.createdAt,
+                deletedAt: e.deletedAt,
+            })),
+            phones: phones.map((p) => ({
+                userId: p.userId,
+                value: p.phone,
+                originalId: p.originalPhoneId,
+                createdAt: p.createdAt,
+                deletedAt: p.deletedAt,
+            })),
+        };
     }
     async getAllAccounts() {
         const users = await this.userRepo
@@ -129,7 +157,11 @@ exports.AdminService = AdminService = __decorate([
     __param(0, (0, typeorm_1.InjectRepository)(user_entity_1.User)),
     __param(1, (0, typeorm_1.InjectRepository)(email_phone_set_entity_1.EmailPhoneSet)),
     __param(2, (0, typeorm_1.InjectRepository)(transaction_entity_1.Transaction)),
+    __param(3, (0, typeorm_1.InjectRepository)(deleted_email_entity_1.DeletedEmail)),
+    __param(4, (0, typeorm_1.InjectRepository)(deleted_phone_entity_1.DeletedPhone)),
     __metadata("design:paramtypes", [typeorm_2.Repository,
+        typeorm_2.Repository,
+        typeorm_2.Repository,
         typeorm_2.Repository,
         typeorm_2.Repository])
 ], AdminService);

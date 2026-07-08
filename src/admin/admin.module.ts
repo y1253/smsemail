@@ -3,11 +3,15 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { User } from '../users/user.entity';
 import { EmailPhoneSet } from '../sets/email-phone-set.entity';
 import { Transaction } from '../transactions/transaction.entity';
+import { DeletedEmail } from '../emails/deleted-email.entity';
+import { DeletedPhone } from '../phones/deleted-phone.entity';
 import { AdminController } from './admin.controller';
 import { AdminService } from './admin.service';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([User, EmailPhoneSet, Transaction])],
+  imports: [
+    TypeOrmModule.forFeature([User, EmailPhoneSet, Transaction, DeletedEmail, DeletedPhone]),
+  ],
   controllers: [AdminController],
   providers: [AdminService],
 })

@@ -29,6 +29,12 @@ export class AdminController {
     return this.adminService.getAllAccounts();
   }
 
+  @Get('deleted')
+  async getDeleted(@Headers('x-admin-password') password: string) {
+    this.assertAdmin(password);
+    return this.adminService.getDeletedContacts();
+  }
+
   @Get('accounts/:userId')
   async getAccount(
     @Headers('x-admin-password') password: string,
