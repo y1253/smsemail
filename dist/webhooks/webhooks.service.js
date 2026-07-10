@@ -146,7 +146,7 @@ let WebhooksService = WebhooksService_1 = class WebhooksService {
             return;
         }
         if (keyword === 'HELP') {
-            await this.signalwireService.sendSms(from, 'SMSMail email-to-SMS. Help: yechiel1253@gmail.com. Reply STOP to unsubscribe.\nCommands: R <msg> reply, R <#1234> <msg> reply to #1234, S <email> <msg> send.');
+            await this.signalwireService.sendSms(from, 'SMSMail email-to-SMS. Help: yechiel1253@gmail.com. Reply STOP to unsubscribe.\nCommands: R <msg> reply, R 42 <msg> reply to email 42, S <email> <msg> send.');
             return;
         }
         const activeSets = await this.setRepo.find({
