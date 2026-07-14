@@ -250,7 +250,7 @@ export class WebhooksService {
     }
     const spaceIdx = rest.indexOf(' ');
     if (spaceIdx === -1) throw new Error('Missing message body. Use: S email@x.com message');
-    return { to: rest.slice(0, spaceIdx), subject: 'Message from SMS', body: rest.slice(spaceIdx + 1) };
+    return { to: rest.slice(0, spaceIdx), subject: '', body: rest.slice(spaceIdx + 1) };
   }
 
   /** Reply to a stored incoming message using the email account that received it. */

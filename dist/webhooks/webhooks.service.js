@@ -248,7 +248,7 @@ let WebhooksService = WebhooksService_1 = class WebhooksService {
         const spaceIdx = rest.indexOf(' ');
         if (spaceIdx === -1)
             throw new Error('Missing message body. Use: S email@x.com message');
-        return { to: rest.slice(0, spaceIdx), subject: 'Message from SMS', body: rest.slice(spaceIdx + 1) };
+        return { to: rest.slice(0, spaceIdx), subject: '', body: rest.slice(spaceIdx + 1) };
     }
     async replyToMessage(from, email, msg, replyText) {
         if (!email.refreshToken) {

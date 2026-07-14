@@ -92,7 +92,7 @@ let GmailService = class GmailService {
     async sendReply(refreshToken, threadId, to, subject, body, from) {
         const auth = this.getAuthClient(refreshToken);
         const gmail = googleapis_1.google.gmail({ version: 'v1', auth });
-        const replySubject = subject.startsWith('Re:') ? subject : `Re: ${subject}`;
+        const replySubject = !subject || subject.startsWith('Re:') ? subject : `Re: ${subject}`;
         const raw = this.buildRaw(from, to, replySubject, body);
         await gmail.users.messages.send({
             userId: 'me',
@@ -166,7 +166,7 @@ let GmailService = class GmailService {
         const lines = [
             `From: ${from}`,
             `To: ${to}`,
-            `Subject: ${subject}`,
+            ...(subject ? [`Subject: ${subject}`] : []),
             'MIME-Version: 1.0',
             'Content-Type: text/plain; charset=utf-8',
             '',
