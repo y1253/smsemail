@@ -1,4 +1,4 @@
-import { Injectable, BadRequestException, Inject, Logger, forwardRef } from '@nestjs/common';
+import { Injectable, BadRequestException, ForbiddenException, Inject, Logger, forwardRef } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, IsNull } from 'typeorm';
 import { Email } from './email.entity';
@@ -15,6 +15,11 @@ type JwtPayload = {
   user_id: number;
   email: string;
 };
+
+// Full-mailbox scope. Users grant it via a checkbox on Google's consent screen
+// that they can miss or leave unchecked — without it we can't watch/read/send
+// Gmail, so we must reject the connect before persisting anything.
+const REQUIRED_GMAIL_SCOPE = 'https://mail.google.com/';
 
 @Injectable()
 export class EmailsService {
@@ -61,6 +66,16 @@ export class EmailsService {
       );
     }
 
+    // Reject up front if the user didn't grant Gmail access. Doing this before
+    // any DB write guarantees an un-granted email is never persisted (and so
+    // never becomes selectable in a set).
+    const grantedScopes = (tokens.scope ?? '').split(' ');
+    if (!grantedScopes.includes(REQUIRED_GMAIL_SCOPE)) {
+      throw new ForbiddenException(
+        "SMSMail needs permission to read and send your Gmail. On Google's consent screen, please check the box granting access to Gmail, then try again.",
+      );
+    }
+
     const idToken = tokens.id_token;
     if (!idToken) {
       throw new BadRequestException('Google did not return an id_token with email information');
@@ -84,6 +99,11 @@ export class EmailsService {
       relations: ['user'],
     });
 
+    const isNew = !email;
+    // Snapshot prior state so a failed watch can be rolled back cleanly.
+    const priorRefreshToken = email?.refreshToken ?? null;
+    const priorDeletedAt = email?.deletedAt ?? null;
+
     if (!email) {
       email = this.emailRepo.create({
         user: owner,
@@ -99,7 +119,27 @@ export class EmailsService {
 
     await this.emailRepo.save(email);
 
-    const { historyId, expiry } = await this.gmailService.watchGmail(tokens.refresh_token);
+    // Scope was validated above, but treat a watch failure (e.g. a residual
+    // insufficient-permission error) as an unusable connection: roll the row
+    // back so it can't be selected, then surface a clear message.
+    let historyId: string;
+    let expiry: Date;
+    try {
+      ({ historyId, expiry } = await this.gmailService.watchGmail(tokens.refresh_token));
+    } catch (err) {
+      this.logger.error(`Failed to start Gmail watch for ${emailFromGoogle}: ${err}`);
+      if (isNew) {
+        await this.emailRepo.remove(email);
+      } else {
+        email.refreshToken = priorRefreshToken;
+        email.deletedAt = priorDeletedAt;
+        await this.emailRepo.save(email);
+      }
+      throw new ForbiddenException(
+        "SMSMail couldn't access your Gmail. On Google's consent screen, please check the box granting access to Gmail, then try again.",
+      );
+    }
+
     email.lastHistoryId = historyId;
     email.watchExpiry = expiry;
     await this.emailRepo.save(email);

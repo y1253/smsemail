@@ -13,6 +13,7 @@ import { SetsModule } from './sets/sets.module';
 import { WebhooksModule } from './webhooks/webhooks.module';
 import { OpenAiModule } from './openai/openai.module';
 import { AdminModule } from './admin/admin.module';
+import { PricingModule } from './pricing/pricing.module';
 
 @Module({
   imports: [
@@ -28,6 +29,7 @@ import { AdminModule } from './admin/admin.module';
     WebhooksModule,
     OpenAiModule,
     AdminModule,
+    PricingModule,
   ],
   controllers: [AppController],
   providers: [AppService],

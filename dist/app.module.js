@@ -22,6 +22,7 @@ const sets_module_1 = require("./sets/sets.module");
 const webhooks_module_1 = require("./webhooks/webhooks.module");
 const openai_module_1 = require("./openai/openai.module");
 const admin_module_1 = require("./admin/admin.module");
+const pricing_module_1 = require("./pricing/pricing.module");
 let AppModule = class AppModule {
 };
 exports.AppModule = AppModule;
@@ -40,6 +41,7 @@ exports.AppModule = AppModule = __decorate([
             webhooks_module_1.WebhooksModule,
             openai_module_1.OpenAiModule,
             admin_module_1.AdminModule,
+            pricing_module_1.PricingModule,
         ],
         controllers: [app_controller_1.AppController],
         providers: [app_service_1.AppService],

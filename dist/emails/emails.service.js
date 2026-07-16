@@ -58,6 +58,7 @@ const crypto = __importStar(require("crypto"));
 const google_auth_library_1 = require("google-auth-library");
 const gmail_service_1 = require("../gmail/gmail.service");
 const sets_service_1 = require("../sets/sets.service");
+const REQUIRED_GMAIL_SCOPE = 'https://mail.google.com/';
 let EmailsService = EmailsService_1 = class EmailsService {
     emailRepo;
     deletedEmailRepo;
@@ -94,6 +95,10 @@ let EmailsService = EmailsService_1 = class EmailsService {
         if (!tokens.refresh_token) {
             throw new common_1.BadRequestException('Google did not return a refresh_token. Make sure you request offline access and prompt=consent.');
         }
+        const grantedScopes = (tokens.scope ?? '').split(' ');
+        if (!grantedScopes.includes(REQUIRED_GMAIL_SCOPE)) {
+            throw new common_1.ForbiddenException("SMSMail needs permission to read and send your Gmail. On Google's consent screen, please check the box granting access to Gmail, then try again.");
+        }
         const idToken = tokens.id_token;
         if (!idToken) {
             throw new common_1.BadRequestException('Google did not return an id_token with email information');
@@ -112,6 +117,9 @@ let EmailsService = EmailsService_1 = class EmailsService {
             where: { user: { userId: owner.userId }, email: emailFromGoogle },
             relations: ['user'],
         });
+        const isNew = !email;
+        const priorRefreshToken = email?.refreshToken ?? null;
+        const priorDeletedAt = email?.deletedAt ?? null;
         if (!email) {
             email = this.emailRepo.create({
                 user: owner,
@@ -126,7 +134,23 @@ let EmailsService = EmailsService_1 = class EmailsService {
             email.deletedAt = null;
         }
         await this.emailRepo.save(email);
-        const { historyId, expiry } = await this.gmailService.watchGmail(tokens.refresh_token);
+        let historyId;
+        let expiry;
+        try {
+            ({ historyId, expiry } = await this.gmailService.watchGmail(tokens.refresh_token));
+        }
+        catch (err) {
+            this.logger.error(`Failed to start Gmail watch for ${emailFromGoogle}: ${err}`);
+            if (isNew) {
+                await this.emailRepo.remove(email);
+            }
+            else {
+                email.refreshToken = priorRefreshToken;
+                email.deletedAt = priorDeletedAt;
+                await this.emailRepo.save(email);
+            }
+            throw new common_1.ForbiddenException("SMSMail couldn't access your Gmail. On Google's consent screen, please check the box granting access to Gmail, then try again.");
+        }
         email.lastHistoryId = historyId;
         email.watchExpiry = expiry;
         await this.emailRepo.save(email);
