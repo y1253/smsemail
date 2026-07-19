@@ -48,8 +48,8 @@ __decorate([
     __metadata("design:type", Object)
 ], User.prototype, "email", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ name: 'password', type: 'varchar', length: 245 }),
-    __metadata("design:type", String)
+    (0, typeorm_1.Column)({ name: 'password', type: 'varchar', length: 245, nullable: true }),
+    __metadata("design:type", Object)
 ], User.prototype, "password", void 0);
 __decorate([
     (0, typeorm_1.Column)({ name: 'auth_type', type: 'varchar', length: 45, nullable: true }),

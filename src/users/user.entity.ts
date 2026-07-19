@@ -24,8 +24,8 @@ export class User {
   @Column({ name: 'email', type: 'varchar', length: 145, nullable: true })
   email!: string | null;
 
-  @Column({ name: 'password', type: 'varchar', length: 245 })
-  password!: string;
+  @Column({ name: 'password', type: 'varchar', length: 245, nullable: true })
+  password!: string | null;
 
   @Column({ name: 'auth_type', type: 'varchar', length: 45, nullable: true })
   authType!: string | null;

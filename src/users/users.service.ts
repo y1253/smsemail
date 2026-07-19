@@ -60,7 +60,7 @@ export class UsersService {
       throw new UnauthorizedException('Invalid password or email');
     }
 
-    if (!(await bcrypt.compare(user.password, savedUser.password))) {
+    if (!savedUser.password || !(await bcrypt.compare(user.password, savedUser.password))) {
       throw new UnauthorizedException('Invalid password or email');
     }
 

@@ -14,7 +14,7 @@ export declare class UsersService {
         firstName?: string | null | undefined;
         lastName?: string | null | undefined;
         email?: string | null | undefined;
-        password?: string | undefined;
+        password?: string | null | undefined;
         authType?: string | null | undefined;
         createdAt?: Date | undefined;
         stripeCustomerId?: string | null | undefined;

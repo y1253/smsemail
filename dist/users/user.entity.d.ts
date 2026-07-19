@@ -7,7 +7,7 @@ export declare class User {
     firstName: string | null;
     lastName: string | null;
     email: string | null;
-    password: string;
+    password: string | null;
     authType: string | null;
     createdAt: Date;
     stripeCustomerId: string | null;

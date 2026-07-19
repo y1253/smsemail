@@ -87,7 +87,7 @@ let UsersService = class UsersService {
         if (!savedUser) {
             throw new common_1.UnauthorizedException('Invalid password or email');
         }
-        if (!(await bcrypt.compare(user.password, savedUser.password))) {
+        if (!savedUser.password || !(await bcrypt.compare(user.password, savedUser.password))) {
             throw new common_1.UnauthorizedException('Invalid password or email');
         }
         return await this.createToken({
