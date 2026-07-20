@@ -1,5 +1,6 @@
 import {
   IsEmail,
+  IsNotEmpty,
   IsOptional,
   IsString,
   MaxLength,
@@ -8,9 +9,9 @@ import {
 
 export class CreateUserDto {
   @IsString()
+  @IsNotEmpty({ message: 'First name is required' })
   @MaxLength(145)
-  @IsOptional()
-  first_name?: string;
+  first_name!: string;
 
   @IsString()
   @MaxLength(145)

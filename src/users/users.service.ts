@@ -2,6 +2,7 @@ import {
   ConflictException,
   Inject,
   Injectable,
+  NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -26,9 +27,17 @@ export class UsersService {
     private readonly googleClient: OAuth2Client,
   ) { }
 
-  async getUser({ user_id }: { user_id: number }) {
-    const user = await this.userRepo.findOneBy({ userId: user_id });
-    return { ...user };
+  async getProfile(userId: number) {
+    const user = await this.userRepo.findOne({
+      where: { userId },
+      select: ['userId', 'firstName', 'lastName', 'email'],
+    });
+
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    return user;
   }
 
   async createNewUser(newUser: any) {
@@ -95,6 +104,21 @@ export class UsersService {
       });
 
       user = await this.userRepo.save(user);
+    } else {
+      // Backfill names for accounts that predate this (or registered by
+      // email/password without one). Only fill blanks — never overwrite.
+      let changed = false;
+      if (!user.firstName && given_name) {
+        user.firstName = given_name;
+        changed = true;
+      }
+      if (!user.lastName && family_name) {
+        user.lastName = family_name;
+        changed = true;
+      }
+      if (changed) {
+        user = await this.userRepo.save(user);
+      }
     }
 
     const accessToken = await this.createToken({

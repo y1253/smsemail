@@ -62,9 +62,15 @@ let UsersService = class UsersService {
         this.jwtService = jwtService;
         this.googleClient = googleClient;
     }
-    async getUser({ user_id }) {
-        const user = await this.userRepo.findOneBy({ userId: user_id });
-        return { ...user };
+    async getProfile(userId) {
+        const user = await this.userRepo.findOne({
+            where: { userId },
+            select: ['userId', 'firstName', 'lastName', 'email'],
+        });
+        if (!user) {
+            throw new common_1.NotFoundException('User not found');
+        }
+        return user;
     }
     async createNewUser(newUser) {
         const { first_name, last_name, email, password, auth_type = 'reg' } = newUser;
@@ -116,6 +122,20 @@ let UsersService = class UsersService {
                 authType: 'google',
             });
             user = await this.userRepo.save(user);
+        }
+        else {
+            let changed = false;
+            if (!user.firstName && given_name) {
+                user.firstName = given_name;
+                changed = true;
+            }
+            if (!user.lastName && family_name) {
+                user.lastName = family_name;
+                changed = true;
+            }
+            if (changed) {
+                user = await this.userRepo.save(user);
+            }
         }
         const accessToken = await this.createToken({
             userId: user.userId,

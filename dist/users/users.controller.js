@@ -15,6 +15,8 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.UsersController = void 0;
 const common_1 = require("@nestjs/common");
 const users_service_1 = require("./users.service");
+const auth_guard_1 = require("../auth/auth.guard");
+const current_user_decorator_1 = require("../auth/current-user.decorator");
 const create_user_dto_1 = require("./dto/create-user.dto");
 const login_user_dto_1 = require("./dto/login-user.dto");
 const google_credential_dto_1 = require("./dto/google-credential.dto");
@@ -22,6 +24,9 @@ let UsersController = class UsersController {
     usersService;
     constructor(usersService) {
         this.usersService = usersService;
+    }
+    async getProfile(user) {
+        return this.usersService.getProfile(user.user_id);
     }
     async postUser(newUser) {
         return await this.usersService.createNewUser(newUser);
@@ -34,6 +39,14 @@ let UsersController = class UsersController {
     }
 };
 exports.UsersController = UsersController;
+__decorate([
+    (0, common_1.Get)('profile'),
+    (0, common_1.UseGuards)(auth_guard_1.AuthGuard),
+    __param(0, (0, current_user_decorator_1.CurrentUser)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object]),
+    __metadata("design:returntype", Promise)
+], UsersController.prototype, "getProfile", null);
 __decorate([
     (0, common_1.Post)('create'),
     __param(0, (0, common_1.Body)()),

@@ -21,8 +21,8 @@ class CreateUserDto {
 exports.CreateUserDto = CreateUserDto;
 __decorate([
     (0, class_validator_1.IsString)(),
+    (0, class_validator_1.IsNotEmpty)({ message: 'First name is required' }),
     (0, class_validator_1.MaxLength)(145),
-    (0, class_validator_1.IsOptional)(),
     __metadata("design:type", String)
 ], CreateUserDto.prototype, "first_name", void 0);
 __decorate([
