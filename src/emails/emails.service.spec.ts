@@ -44,6 +44,8 @@ describe('EmailsService.connectGoogleEmail', () => {
       watchGmail:
         overrides.watchGmail ??
         jest.fn().mockResolvedValue({ historyId: '123', expiry: new Date(0) }),
+      unwatchGmail: jest.fn().mockResolvedValue(undefined),
+      revokeAccess: jest.fn().mockResolvedValue(undefined),
     };
     const setsService = { teardownSetsForEmail: jest.fn() };
 
@@ -76,7 +78,7 @@ describe('EmailsService.connectGoogleEmail', () => {
   });
 
   it('rolls back a newly-created row when the Gmail watch fails', async () => {
-    const { svc, emailRepo } = build({
+    const { svc, emailRepo, gmailService } = build({
       watchGmail: jest.fn().mockRejectedValue(new Error('insufficient permission')),
     });
 
@@ -86,6 +88,8 @@ describe('EmailsService.connectGoogleEmail', () => {
 
     // The row was saved, then removed — never left selectable.
     expect(emailRepo.remove).toHaveBeenCalledTimes(1);
+    // The grant obtained from the token exchange is revoked, not left dangling.
+    expect(gmailService.revokeAccess).toHaveBeenCalledWith('rt');
   });
 
   it('connects successfully when the Gmail scope is granted', async () => {

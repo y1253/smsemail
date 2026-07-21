@@ -9,6 +9,7 @@ export declare class GmailService {
         expiry: Date;
     }>;
     unwatchGmail(refreshToken: string): Promise<void>;
+    revokeAccess(refreshToken: string): Promise<void>;
     getNewMessages(refreshToken: string, startHistoryId: string): Promise<gmail_v1.Schema$Message[]>;
     fetchMessage(refreshToken: string, messageId: string): Promise<{
         gmailMessageId: string;

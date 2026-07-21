@@ -43,6 +43,14 @@ export class GmailService {
     await gmail.users.stop({ userId: 'me' });
   }
 
+  // Revoke the OAuth grant with Google so the app no longer appears under the
+  // user's third-party access. Revoking the refresh token revokes the whole
+  // grant. Call this AFTER unwatchGmail — once revoked, the token is dead.
+  async revokeAccess(refreshToken: string): Promise<void> {
+    const auth = this.getAuthClient(refreshToken);
+    await auth.revokeCredentials();
+  }
+
   async getNewMessages(
     refreshToken: string,
     startHistoryId: string,

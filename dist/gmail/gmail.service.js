@@ -45,6 +45,10 @@ let GmailService = class GmailService {
         const gmail = googleapis_1.google.gmail({ version: 'v1', auth });
         await gmail.users.stop({ userId: 'me' });
     }
+    async revokeAccess(refreshToken) {
+        const auth = this.getAuthClient(refreshToken);
+        await auth.revokeCredentials();
+    }
     async getNewMessages(refreshToken, startHistoryId) {
         const auth = this.getAuthClient(refreshToken);
         const gmail = googleapis_1.google.gmail({ version: 'v1', auth });

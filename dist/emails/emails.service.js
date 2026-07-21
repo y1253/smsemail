@@ -149,6 +149,12 @@ let EmailsService = EmailsService_1 = class EmailsService {
                 email.deletedAt = priorDeletedAt;
                 await this.emailRepo.save(email);
             }
+            try {
+                await this.gmailService.revokeAccess(tokens.refresh_token);
+            }
+            catch (revokeErr) {
+                this.logger.error(`Failed to revoke Google access for ${emailFromGoogle}: ${revokeErr}`);
+            }
             throw new common_1.ForbiddenException("SMSMail couldn't access your Gmail. On Google's consent screen, please check the box granting access to Gmail, then try again.");
         }
         email.lastHistoryId = historyId;
@@ -179,11 +185,18 @@ let EmailsService = EmailsService_1 = class EmailsService {
         }
         await this.setsService.teardownSetsForEmail(userId, emailId);
         if (email.refreshToken) {
+            const token = this.decrypt(email.refreshToken);
             try {
-                await this.gmailService.unwatchGmail(this.decrypt(email.refreshToken));
+                await this.gmailService.unwatchGmail(token);
             }
             catch (err) {
                 this.logger.error(`Failed to unwatch Gmail for email ${emailId}: ${err}`);
+            }
+            try {
+                await this.gmailService.revokeAccess(token);
+            }
+            catch (err) {
+                this.logger.error(`Failed to revoke Google access for email ${emailId}: ${err}`);
             }
         }
         await this.deletedEmailRepo.save(this.deletedEmailRepo.create({

@@ -135,6 +135,14 @@ export class EmailsService {
         email.deletedAt = priorDeletedAt;
         await this.emailRepo.save(email);
       }
+      // The DB row is rolled back, but Google still holds the grant from the
+      // token exchange above — revoke it so a failed connect leaves nothing
+      // dangling in the user's third-party access. Best-effort.
+      try {
+        await this.gmailService.revokeAccess(tokens.refresh_token);
+      } catch (revokeErr) {
+        this.logger.error(`Failed to revoke Google access for ${emailFromGoogle}: ${revokeErr}`);
+      }
       throw new ForbiddenException(
         "SMSMail couldn't access your Gmail. On Google's consent screen, please check the box granting access to Gmail, then try again.",
       );
@@ -179,13 +187,21 @@ export class EmailsService {
     // Stripe subscriptions and stops the Gmail watch).
     await this.setsService.teardownSetsForEmail(userId, emailId);
 
-    // Stop the Gmail watch for the account itself (covers the no-set case;
-    // idempotent if a set teardown already stopped it).
+    // Stop the Gmail watch and revoke the OAuth grant so the app no longer
+    // shows under the user's Google third-party access. Unwatch first — revoking
+    // kills the token, so the watch-stop must run while it's still valid. Both
+    // are best-effort: a Google failure must never block the local soft-delete.
     if (email.refreshToken) {
+      const token = this.decrypt(email.refreshToken);
       try {
-        await this.gmailService.unwatchGmail(this.decrypt(email.refreshToken));
+        await this.gmailService.unwatchGmail(token);
       } catch (err) {
         this.logger.error(`Failed to unwatch Gmail for email ${emailId}: ${err}`);
+      }
+      try {
+        await this.gmailService.revokeAccess(token);
+      } catch (err) {
+        this.logger.error(`Failed to revoke Google access for email ${emailId}: ${err}`);
       }
     }
 
