@@ -13,10 +13,12 @@ import { EmailsService } from '../emails/emails.service';
 import { GmailService } from '../gmail/gmail.service';
 import { OpenAiService } from '../openai/openai.service';
 import { SignalwireService } from '../signalwire/signalwire.service';
-import { truncateClean } from '../common/text.util';
+import { fitToSentence } from '../common/text.util';
 
 @Injectable()
 export class WebhooksService {
+  // Single-segment GSM-7 SMS character limit; every summary SMS is built to fit.
+  private static readonly SMS_LIMIT = 160;
   private readonly logger = new Logger(WebhooksService.name);
   private readonly stripe: Stripe;
 
@@ -76,9 +78,8 @@ export class WebhooksService {
           continue;
         }
 
-        const budget = this.summaryBudget(msg.sender, email.email);
-        const summary = await this.openAiService.summarize(msg.subject, msg.body, budget);
-
+        // Save first so we know the real messageId, which the footer (and thus
+        // the exact body budget) depends on.
         const record = this.incomeMessageRepo.create({
           email,
           createdAt: new Date(),
@@ -88,6 +89,14 @@ export class WebhooksService {
           subject: msg.subject.slice(0, 255),
         });
         const saved = await this.incomeMessageRepo.save(record);
+
+        const { bodyBudget } = this.smsScaffold(
+          msg.sender,
+          email.email,
+          msg.attachmentCount,
+          saved.messageId,
+        );
+        const summary = await this.openAiService.summarize(msg.subject, msg.body, bodyBudget);
 
         const sms = this.buildSms(msg.sender, summary, msg.attachmentCount, saved.messageId, email.email);
         const senderAddr = this.extractEmailAddress(msg.sender);
@@ -425,11 +434,21 @@ Reply STOP to unsubscribe`,
     return raw.trim();
   }
 
-  private summaryBudget(sender: string, toEmail: string): number {
-    const senderLen = Math.min(this.formatSender(sender).length, 40);
-    const emailLen = Math.min(toEmail.length, 30);
-    // Structure: "To: \nFrom: \n\n\n\n" = 15 chars; footer reserve = 20
-    return Math.max(10, 160 - 15 - emailLen - senderLen - 20);
+  // Single source of truth for the SMS layout: the fixed header/footer and the
+  // exact room left for the summary body. Used both to tell the summarizer how
+  // much space it has and to assemble the final message, so the two never drift.
+  private smsScaffold(
+    sender: string,
+    toEmail: string,
+    attachmentCount: number,
+    messageId: number,
+  ): { to: string; s: string; footer: string; bodyBudget: number } {
+    const replyHint = `Reply: R ${messageId}`;
+    const footer = attachmentCount > 0 ? `📎+${attachmentCount}  |  ${replyHint}` : replyHint;
+    const s = this.formatSender(sender).slice(0, 40);
+    const to = toEmail.slice(0, 30);
+    const fixed = `To: ${to}\nFrom: ${s}\n\n\n\n${footer}`;
+    return { to, s, footer, bodyBudget: Math.max(10, WebhooksService.SMS_LIMIT - fixed.length) };
   }
 
   private buildSms(
@@ -439,14 +458,15 @@ Reply STOP to unsubscribe`,
     messageId: number,
     toEmail: string,
   ): string {
-    const replyHint = `Reply: R ${messageId}`;
-    const footer = attachmentCount > 0 ? `📎+${attachmentCount}  |  ${replyHint}` : replyHint;
-    const s = this.formatSender(sender).slice(0, 40);
-    const to = toEmail.slice(0, 30);
-    // Fit the summary to the exact room left after the real header + footer, so
-    // any truncation lands on a word boundary (...) instead of mid-word.
-    const headerFooter = `To: ${to}\nFrom: ${s}\n\n\n\n${footer}`;
-    const body = truncateClean(summary, Math.max(0, 160 - headerFooter.length));
+    const { to, s, footer, bodyBudget } = this.smsScaffold(
+      sender,
+      toEmail,
+      attachmentCount,
+      messageId,
+    );
+    // Fit the summary to the exact room left, preferring a complete-sentence end
+    // over a mid-sentence "..." cut.
+    const body = fitToSentence(summary, bodyBudget);
     return `To: ${to}\nFrom: ${s}\n\n${body}\n\n${footer}`;
   }
 }

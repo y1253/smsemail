@@ -20,6 +20,7 @@ export declare class WebhooksService {
     private readonly gmailService;
     private readonly openAiService;
     private readonly signalwireService;
+    private static readonly SMS_LIMIT;
     private readonly logger;
     private readonly stripe;
     constructor(emailRepo: Repository<Email>, phoneRepo: Repository<Phone>, setRepo: Repository<EmailPhoneSet>, incomeMessageRepo: Repository<IncomeMessage>, pendingRepo: Repository<PendingSmsCommand>, config: ConfigService, emailsService: EmailsService, gmailService: GmailService, openAiService: OpenAiService, signalwireService: SignalwireService);
@@ -34,6 +35,6 @@ export declare class WebhooksService {
     renewExpiringWatches(): Promise<void>;
     private extractEmailAddress;
     private formatSender;
-    private summaryBudget;
+    private smsScaffold;
     private buildSms;
 }

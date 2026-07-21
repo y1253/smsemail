@@ -33,7 +33,8 @@ const gmail_service_1 = require("../gmail/gmail.service");
 const openai_service_1 = require("../openai/openai.service");
 const signalwire_service_1 = require("../signalwire/signalwire.service");
 const text_util_1 = require("../common/text.util");
-let WebhooksService = WebhooksService_1 = class WebhooksService {
+let WebhooksService = class WebhooksService {
+    static { WebhooksService_1 = this; }
     emailRepo;
     phoneRepo;
     setRepo;
@@ -44,6 +45,7 @@ let WebhooksService = WebhooksService_1 = class WebhooksService {
     gmailService;
     openAiService;
     signalwireService;
+    static SMS_LIMIT = 160;
     logger = new common_1.Logger(WebhooksService_1.name);
     stripe;
     constructor(emailRepo, phoneRepo, setRepo, incomeMessageRepo, pendingRepo, config, emailsService, gmailService, openAiService, signalwireService) {
@@ -90,8 +92,6 @@ let WebhooksService = WebhooksService_1 = class WebhooksService {
                     this.logger.debug(`Skipping message ${raw.id} (labels: ${msg.labels.join(', ')})`);
                     continue;
                 }
-                const budget = this.summaryBudget(msg.sender, email.email);
-                const summary = await this.openAiService.summarize(msg.subject, msg.body, budget);
                 const record = this.incomeMessageRepo.create({
                     email,
                     createdAt: new Date(),
@@ -101,6 +101,8 @@ let WebhooksService = WebhooksService_1 = class WebhooksService {
                     subject: msg.subject.slice(0, 255),
                 });
                 const saved = await this.incomeMessageRepo.save(record);
+                const { bodyBudget } = this.smsScaffold(msg.sender, email.email, msg.attachmentCount, saved.messageId);
+                const summary = await this.openAiService.summarize(msg.subject, msg.body, bodyBudget);
                 const sms = this.buildSms(msg.sender, summary, msg.attachmentCount, saved.messageId, email.email);
                 const senderAddr = this.extractEmailAddress(msg.sender);
                 for (const set of activeSets) {
@@ -387,18 +389,17 @@ Reply STOP to unsubscribe`);
         }
         return raw.trim();
     }
-    summaryBudget(sender, toEmail) {
-        const senderLen = Math.min(this.formatSender(sender).length, 40);
-        const emailLen = Math.min(toEmail.length, 30);
-        return Math.max(10, 160 - 15 - emailLen - senderLen - 20);
-    }
-    buildSms(sender, summary, attachmentCount, messageId, toEmail) {
+    smsScaffold(sender, toEmail, attachmentCount, messageId) {
         const replyHint = `Reply: R ${messageId}`;
         const footer = attachmentCount > 0 ? `📎+${attachmentCount}  |  ${replyHint}` : replyHint;
         const s = this.formatSender(sender).slice(0, 40);
         const to = toEmail.slice(0, 30);
-        const headerFooter = `To: ${to}\nFrom: ${s}\n\n\n\n${footer}`;
-        const body = (0, text_util_1.truncateClean)(summary, Math.max(0, 160 - headerFooter.length));
+        const fixed = `To: ${to}\nFrom: ${s}\n\n\n\n${footer}`;
+        return { to, s, footer, bodyBudget: Math.max(10, WebhooksService_1.SMS_LIMIT - fixed.length) };
+    }
+    buildSms(sender, summary, attachmentCount, messageId, toEmail) {
+        const { to, s, footer, bodyBudget } = this.smsScaffold(sender, toEmail, attachmentCount, messageId);
+        const body = (0, text_util_1.fitToSentence)(summary, bodyBudget);
         return `To: ${to}\nFrom: ${s}\n\n${body}\n\n${footer}`;
     }
 };
