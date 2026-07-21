@@ -47,7 +47,7 @@ let GmailService = class GmailService {
     }
     async revokeAccess(refreshToken) {
         const auth = this.getAuthClient(refreshToken);
-        await auth.revokeCredentials();
+        await auth.revokeToken(refreshToken);
     }
     async getNewMessages(refreshToken, startHistoryId) {
         const auth = this.getAuthClient(refreshToken);
