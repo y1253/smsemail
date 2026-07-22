@@ -125,6 +125,15 @@ let SetsService = SetsService_1 = class SetsService {
         }
         return sets.length;
     }
+    isPromoValid(promoCode) {
+        const validPromo = this.config.get('PROMO_CODE');
+        if (!validPromo || !promoCode)
+            return false;
+        return promoCode.trim().toLowerCase() === validPromo.trim().toLowerCase();
+    }
+    validatePromo(promoCode) {
+        return { valid: this.isPromoValid(promoCode) };
+    }
     async createSetForUser(userId, emailId, phoneId, promoCode) {
         const user = await this.userRepo.findOne({ where: { userId } });
         if (!user) {
@@ -144,8 +153,7 @@ let SetsService = SetsService_1 = class SetsService {
         if (!phone) {
             throw new common_1.BadRequestException('Phone not found for this user');
         }
-        const validPromo = this.config.get('PROMO_CODE');
-        const promoValid = !!promoCode && promoCode === validPromo;
+        const promoValid = this.isPromoValid(promoCode);
         if (!promoValid && !user.stripeCustomerId) {
             throw new common_1.BadRequestException('Add a payment method before creating a set');
         }

@@ -42,6 +42,10 @@ export declare class SetsService {
     private teardownSet;
     teardownSetsForEmail(userId: number, emailId: number): Promise<number>;
     teardownSetsForPhone(userId: number, phoneId: number): Promise<number>;
+    private isPromoValid;
+    validatePromo(promoCode: string): {
+        valid: boolean;
+    };
     createSetForUser(userId: number, emailId: number, phoneId: number, promoCode?: string): Promise<{
         setId: number;
     }>;

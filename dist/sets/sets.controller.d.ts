@@ -23,6 +23,9 @@ export declare class SetsController {
         allowedSenders: string[];
         stripeSubscriptionId: string | null;
     }[]>;
+    validatePromo(code: string): {
+        valid: boolean;
+    };
     createSet(dto: CreateSetDto, user: JwtPayload): Promise<{
         setId: number;
     }>;

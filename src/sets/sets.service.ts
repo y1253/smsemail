@@ -127,6 +127,20 @@ export class SetsService {
     return sets.length;
   }
 
+  /**
+   * Case-insensitive (and whitespace-tolerant) match against the single shared
+   * PROMO_CODE secret. An unset/empty PROMO_CODE never matches.
+   */
+  private isPromoValid(promoCode?: string): boolean {
+    const validPromo = this.config.get<string>('PROMO_CODE');
+    if (!validPromo || !promoCode) return false;
+    return promoCode.trim().toLowerCase() === validPromo.trim().toLowerCase();
+  }
+
+  validatePromo(promoCode: string): { valid: boolean } {
+    return { valid: this.isPromoValid(promoCode) };
+  }
+
   async createSetForUser(
     userId: number,
     emailId: number,
@@ -154,8 +168,7 @@ export class SetsService {
       throw new BadRequestException('Phone not found for this user');
     }
 
-    const validPromo = this.config.get<string>('PROMO_CODE');
-    const promoValid = !!promoCode && promoCode === validPromo;
+    const promoValid = this.isPromoValid(promoCode);
 
     if (!promoValid && !user.stripeCustomerId) {
       throw new BadRequestException('Add a payment method before creating a set');

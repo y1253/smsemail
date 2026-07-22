@@ -27,6 +27,9 @@ let SetsController = class SetsController {
     async listSets(user) {
         return this.setsService.listSetsForUser(user.user_id);
     }
+    validatePromo(code) {
+        return this.setsService.validatePromo(code ?? '');
+    }
     async createSet(dto, user) {
         return this.setsService.createSetForUser(user.user_id, dto.emailId, dto.phoneId, dto.promoCode);
     }
@@ -49,6 +52,14 @@ __decorate([
     __metadata("design:paramtypes", [Object]),
     __metadata("design:returntype", Promise)
 ], SetsController.prototype, "listSets", null);
+__decorate([
+    (0, common_1.Get)('validate-promo'),
+    (0, common_1.UseGuards)(auth_guard_1.AuthGuard),
+    __param(0, (0, common_1.Query)('code')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String]),
+    __metadata("design:returntype", void 0)
+], SetsController.prototype, "validatePromo", null);
 __decorate([
     (0, common_1.Post)(),
     (0, common_1.UseGuards)(auth_guard_1.AuthGuard),

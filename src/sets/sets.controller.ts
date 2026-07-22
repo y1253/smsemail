@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, ParseIntPipe, Post, Put, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, ParseIntPipe, Post, Put, Query, UseGuards } from '@nestjs/common';
 import { SetsService } from './sets.service';
 import { AuthGuard } from '../auth/auth.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
@@ -18,6 +18,12 @@ export class SetsController {
   @UseGuards(AuthGuard)
   async listSets(@CurrentUser() user: JwtPayload) {
     return this.setsService.listSetsForUser(user.user_id);
+  }
+
+  @Get('validate-promo')
+  @UseGuards(AuthGuard)
+  validatePromo(@Query('code') code: string) {
+    return this.setsService.validatePromo(code ?? '');
   }
 
   @Post()
