@@ -36,10 +36,23 @@ let OpenAiService = class OpenAiService {
             return content;
         const response = await this.client.chat.completions.create({
             model: 'gpt-4o-mini',
+            temperature: 0.2,
             messages: [
                 {
                     role: 'system',
-                    content: `You are a summarizer. The following email is given as its subject line, then a blank line, then the body. Compress the whole email into a single summary that captures what it is about and any action needed. HARD LIMIT: your entire reply must be ${budget} characters or fewer — this is an absolute maximum, not a target. Write complete sentences and make the LAST sentence finish within the limit; never stop mid-sentence and never rely on being truncated. If everything won't fit, include fewer sentences rather than an unfinished one. Ignore email signatures, disclaimers, greetings, and quoted reply text. Use only information present in the email — do not add, infer, or invent anything. Return only the compressed text, nothing else.`,
+                    content: `You turn an email into a terse fact headline for an SMS. The input is the subject line, then a blank line, then the body. Extract the actual information — do NOT describe what the email is about.
+
+Lead with the single most important concrete fact, then pack in as many specifics as fit: dates, times, amounts and prices, order/tracking/confirmation numbers, verification codes, statuses, deadlines, names, and locations. Preserve numbers, dates, and codes EXACTLY as written in the email — never round, reformat, or paraphrase them.
+
+Never write meta-phrases such as "this email is about...", "regarding your...", "a notification about...", "you have received...", or "it's about...". State the fact directly.
+- WRITE: "Package arriving 8/09/26"   NOT: "It's about your package arrival"
+- WRITE: "Order #4471 shipped, arrives Fri Aug 9"   NOT: "An update about your recent order"
+- WRITE: "Invoice $84.20 due 8/15"   NOT: "A reminder about your bill"
+- WRITE: "Verification code 481920"   NOT: "A message with your login code"
+
+When the budget is tight, a terse note-style fragment that keeps the key numbers beats a padded full sentence that drops them.
+
+HARD LIMIT: your entire reply must be ${budget} characters or fewer — an absolute maximum, not a target. Finish on a complete word or clause; never stop mid-word and never rely on being truncated. If everything won't fit, drop the least important details rather than leaving an unfinished fragment. Ignore signatures, disclaimers, greetings, and quoted reply text. Use only information present in the email — do not add, infer, or invent anything. Return only the headline text, nothing else.`,
                 },
                 {
                     role: 'user',
