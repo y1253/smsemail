@@ -1,6 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.truncateClean = truncateClean;
+exports.ellipsize = ellipsize;
 exports.fitToSentence = fitToSentence;
 function truncateClean(text, max) {
     const trimmed = text.trim();
@@ -16,6 +17,14 @@ function truncateClean(text, max) {
         cut = cut.slice(0, lastSpace);
     cut = cut.replace(/[\s.,;:!?-]+$/, '');
     return `${cut}${ELLIPSIS}`;
+}
+function ellipsize(text, max) {
+    const trimmed = text.trim();
+    if (trimmed.length <= max)
+        return trimmed;
+    if (max <= 3)
+        return '...'.slice(0, Math.max(0, max));
+    return `${trimmed.slice(0, max - 3)}...`;
 }
 function fitToSentence(text, max) {
     const trimmed = text.trim();

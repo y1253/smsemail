@@ -13,7 +13,7 @@ import { EmailsService } from '../emails/emails.service';
 import { GmailService } from '../gmail/gmail.service';
 import { OpenAiService } from '../openai/openai.service';
 import { SignalwireService } from '../signalwire/signalwire.service';
-import { fitToSentence } from '../common/text.util';
+import { ellipsize, fitToSentence } from '../common/text.util';
 
 @Injectable()
 export class WebhooksService {
@@ -445,8 +445,9 @@ Reply STOP to unsubscribe`,
   ): { to: string; s: string; footer: string; bodyBudget: number } {
     const replyHint = `Reply: R ${messageId}`;
     const footer = attachmentCount > 0 ? `📎+${attachmentCount}  |  ${replyHint}` : replyHint;
-    const s = this.formatSender(sender).slice(0, 40);
-    const to = toEmail.slice(0, 30);
+    // Ellipsized, not hard-cut: a chopped address must read as chopped.
+    const s = ellipsize(this.formatSender(sender), 40);
+    const to = ellipsize(toEmail, 30);
     const fixed = `To: ${to}\nFrom: ${s}\n\n\n\n${footer}`;
     return { to, s, footer, bodyBudget: Math.max(10, WebhooksService.SMS_LIMIT - fixed.length) };
   }

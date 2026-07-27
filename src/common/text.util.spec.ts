@@ -1,4 +1,4 @@
-import { fitToSentence, truncateClean } from './text.util';
+import { ellipsize, fitToSentence, truncateClean } from './text.util';
 
 describe('truncateClean', () => {
   it('returns short text unchanged, without an ellipsis', () => {
@@ -36,6 +36,41 @@ describe('truncateClean', () => {
     expect(truncateClean('anything long here', 3)).toBe('...');
     expect(truncateClean('anything long here', 2)).toBe('..');
     expect(truncateClean('anything long here', 0)).toBe('');
+  });
+});
+
+describe('ellipsize', () => {
+  it('returns text unchanged, and trimmed, when it fits', () => {
+    expect(ellipsize('Bob bob@x.com', 40)).toBe('Bob bob@x.com');
+    expect(ellipsize('  Bob bob@x.com  ', 40)).toBe('Bob bob@x.com');
+  });
+
+  it('cuts a long sender to exactly max and ends with ...', () => {
+    const result = ellipsize('Jonathan Smithers jonathan.smithers@longcompany.com', 40);
+    expect(result).toBe('Jonathan Smithers jonathan.smithers@l...');
+    expect(result.length).toBe(40); // 37 kept chars + "..."
+    expect(result.endsWith('...')).toBe(true);
+  });
+
+  it('keeps the address fragment instead of snapping back to the display name', () => {
+    const sender = 'Averyverylongdisplayname Smith bob@example.com';
+    const result = ellipsize(sender, 40);
+    expect(result).toBe('Averyverylongdisplayname Smith bob@ex...');
+    // truncateClean would have thrown the address away at the word boundary.
+    expect(result).not.toBe(truncateClean(sender, 40));
+  });
+
+  it('handles a tiny max without throwing', () => {
+    expect(ellipsize('anything long here', 3)).toBe('...');
+    expect(ellipsize('anything long here', 2)).toBe('..');
+    expect(ellipsize('anything long here', 0)).toBe('');
+  });
+
+  it('always stays within max', () => {
+    const text = 'Jonathan Smithers jonathan.smithers@longcompany.example.com';
+    for (const max of [0, 1, 3, 4, 10, 30, 40, 59, 100]) {
+      expect(ellipsize(text, max).length).toBeLessThanOrEqual(max);
+    }
   });
 });
 

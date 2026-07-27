@@ -392,8 +392,8 @@ Reply STOP to unsubscribe`);
     smsScaffold(sender, toEmail, attachmentCount, messageId) {
         const replyHint = `Reply: R ${messageId}`;
         const footer = attachmentCount > 0 ? `📎+${attachmentCount}  |  ${replyHint}` : replyHint;
-        const s = this.formatSender(sender).slice(0, 40);
-        const to = toEmail.slice(0, 30);
+        const s = (0, text_util_1.ellipsize)(this.formatSender(sender), 40);
+        const to = (0, text_util_1.ellipsize)(toEmail, 30);
         const fixed = `To: ${to}\nFrom: ${s}\n\n\n\n${footer}`;
         return { to, s, footer, bodyBudget: Math.max(10, WebhooksService_1.SMS_LIMIT - fixed.length) };
     }

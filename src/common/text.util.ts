@@ -21,6 +21,19 @@ export function truncateClean(text: string, max: number): string {
 }
 
 /**
+ * Cut `text` to at most `max` characters, appending an ASCII "..." when it
+ * doesn't fit. Unlike `truncateClean` this does NOT snap to a word boundary:
+ * it is for header fields like an email address, where keeping as many
+ * characters as possible matters more than ending on a whole word.
+ */
+export function ellipsize(text: string, max: number): string {
+  const trimmed = text.trim();
+  if (trimmed.length <= max) return trimmed;
+  if (max <= 3) return '...'.slice(0, Math.max(0, max));
+  return `${trimmed.slice(0, max - 3)}...`;
+}
+
+/**
  * Fit `text` into at most `max` characters, preferring to end on a COMPLETE
  * sentence (a trailing `.`/`!`/`?`, optionally followed by a closing quote or
  * paren). Keeps the terminating punctuation and adds no ellipsis.
