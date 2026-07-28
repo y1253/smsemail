@@ -94,6 +94,7 @@ export class SetsService {
     }
 
     set.deletedAt = new Date();
+    set.pendingCancelAt = null;
     await this.setRepo.save(set);
   }
 
@@ -139,6 +140,18 @@ export class SetsService {
 
   validatePromo(promoCode: string): { valid: boolean } {
     return { valid: this.isPromoValid(promoCode) };
+  }
+
+  /**
+   * When the subscription is scheduled to end (or, once resumed, when it next
+   * renews). Stripe 20.x moved `current_period_end` off the Subscription and
+   * onto its items, so reading it from the subscription itself yields an
+   * Invalid Date. `cancel_at` is the authoritative "service ends here" stamp
+   * once `cancel_at_period_end` is set; the item period is the fallback.
+   */
+  private resolveCancelAt(sub: Stripe.Subscription): Date | null {
+    const ts = sub.cancel_at ?? sub.items?.data?.[0]?.current_period_end ?? null;
+    return ts ? new Date(ts * 1000) : null;
   }
 
   async createSetForUser(
@@ -204,6 +217,7 @@ export class SetsService {
     if (existing) {
       if (existing.deletedAt) {
         existing.deletedAt = null;
+        existing.pendingCancelAt = null;
         existing.createdAt = now;
         existing.stripeSubscriptionId = subscriptionId;
         await this.setRepo.save(existing);
@@ -237,7 +251,7 @@ export class SetsService {
     return { setId: saved.setId };
   }
 
-  async cancelSetSubscription(userId: number, setId: number): Promise<{ cancelAt: Date }> {
+  async cancelSetSubscription(userId: number, setId: number): Promise<{ cancelAt: Date | null }> {
     const set = await this.setRepo.findOne({
       where: { setId, deletedAt: IsNull() },
       relations: ['email', 'email.user'],
@@ -254,9 +268,65 @@ export class SetsService {
     const sub = await this.stripe.subscriptions.update(set.stripeSubscriptionId, {
       cancel_at_period_end: true,
     });
-    set.pendingCancelAt = new Date((sub as any).current_period_end * 1000);
+    set.pendingCancelAt = this.resolveCancelAt(sub);
     await this.setRepo.save(set);
     return { cancelAt: set.pendingCancelAt };
+  }
+
+  /**
+   * Undo a pending cancellation while the set is still alive. Stripe keeps the
+   * same subscription and billing anchor, so the user is simply charged again
+   * on the date the subscription would otherwise have ended — no immediate
+   * charge and no proration.
+   */
+  async resumeSetSubscription(
+    userId: number,
+    setId: number,
+  ): Promise<{ resumed: true; nextBillingAt: Date | null }> {
+    const set = await this.setRepo.findOne({
+      where: { setId, deletedAt: IsNull() },
+      relations: ['email', 'email.user'],
+    });
+    if (!set || set.email.user.userId !== userId) {
+      throw new BadRequestException('Set not found for this user');
+    }
+    if (!set.stripeSubscriptionId || set.stripeSubscriptionId === 'PROMO') {
+      throw new BadRequestException('No paid subscription to resume');
+    }
+    if (!set.pendingCancelAt) {
+      throw new BadRequestException('Subscription is not scheduled for cancellation');
+    }
+
+    // Resuming with no card on file would silently succeed here and then fail
+    // at the next invoice, which tears the set down. Catch it now instead.
+    const user = await this.userRepo.findOne({ where: { userId } });
+    if (!user?.stripeCustomerId) {
+      throw new BadRequestException('Add a payment method before resuming');
+    }
+    const { data: cards } = await this.stripe.paymentMethods.list({
+      customer: user.stripeCustomerId,
+      type: 'card',
+      limit: 1,
+    });
+    if (cards.length === 0) {
+      throw new BadRequestException('Add a payment method before resuming');
+    }
+
+    let sub: Stripe.Subscription;
+    try {
+      sub = await this.stripe.subscriptions.update(set.stripeSubscriptionId, {
+        cancel_at_period_end: false,
+      });
+    } catch (err: any) {
+      this.logger.error(`Stripe resume failed for ${set.stripeSubscriptionId}: ${err}`);
+      throw new BadRequestException(
+        'This subscription has already ended — create the set again to restart it',
+      );
+    }
+
+    set.pendingCancelAt = null;
+    await this.setRepo.save(set);
+    return { resumed: true, nextBillingAt: this.resolveCancelAt(sub) };
   }
 
   async updateSenders(userId: number, setId: number, senders: string[]): Promise<{ updated: true }> {

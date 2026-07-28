@@ -67,5 +67,14 @@ export class SetsController {
   ) {
     return this.setsService.cancelSetSubscription(user.user_id, setId);
   }
+
+  @Post(':setId/resume')
+  @UseGuards(AuthGuard)
+  async resumeSubscription(
+    @Param('setId', ParseIntPipe) setId: number,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.setsService.resumeSetSubscription(user.user_id, setId);
+  }
 }
 

@@ -46,11 +46,16 @@ export declare class SetsService {
     validatePromo(promoCode: string): {
         valid: boolean;
     };
+    private resolveCancelAt;
     createSetForUser(userId: number, emailId: number, phoneId: number, promoCode?: string): Promise<{
         setId: number;
     }>;
     cancelSetSubscription(userId: number, setId: number): Promise<{
-        cancelAt: Date;
+        cancelAt: Date | null;
+    }>;
+    resumeSetSubscription(userId: number, setId: number): Promise<{
+        resumed: true;
+        nextBillingAt: Date | null;
     }>;
     updateSenders(userId: number, setId: number, senders: string[]): Promise<{
         updated: true;

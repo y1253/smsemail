@@ -103,6 +103,7 @@ let SetsService = SetsService_1 = class SetsService {
             }
         }
         set.deletedAt = new Date();
+        set.pendingCancelAt = null;
         await this.setRepo.save(set);
     }
     async teardownSetsForEmail(userId, emailId) {
@@ -133,6 +134,10 @@ let SetsService = SetsService_1 = class SetsService {
     }
     validatePromo(promoCode) {
         return { valid: this.isPromoValid(promoCode) };
+    }
+    resolveCancelAt(sub) {
+        const ts = sub.cancel_at ?? sub.items?.data?.[0]?.current_period_end ?? null;
+        return ts ? new Date(ts * 1000) : null;
     }
     async createSetForUser(userId, emailId, phoneId, promoCode) {
         const user = await this.userRepo.findOne({ where: { userId } });
@@ -185,6 +190,7 @@ let SetsService = SetsService_1 = class SetsService {
         if (existing) {
             if (existing.deletedAt) {
                 existing.deletedAt = null;
+                existing.pendingCancelAt = null;
                 existing.createdAt = now;
                 existing.stripeSubscriptionId = subscriptionId;
                 await this.setRepo.save(existing);
@@ -226,9 +232,49 @@ let SetsService = SetsService_1 = class SetsService {
         const sub = await this.stripe.subscriptions.update(set.stripeSubscriptionId, {
             cancel_at_period_end: true,
         });
-        set.pendingCancelAt = new Date(sub.current_period_end * 1000);
+        set.pendingCancelAt = this.resolveCancelAt(sub);
         await this.setRepo.save(set);
         return { cancelAt: set.pendingCancelAt };
+    }
+    async resumeSetSubscription(userId, setId) {
+        const set = await this.setRepo.findOne({
+            where: { setId, deletedAt: (0, typeorm_2.IsNull)() },
+            relations: ['email', 'email.user'],
+        });
+        if (!set || set.email.user.userId !== userId) {
+            throw new common_1.BadRequestException('Set not found for this user');
+        }
+        if (!set.stripeSubscriptionId || set.stripeSubscriptionId === 'PROMO') {
+            throw new common_1.BadRequestException('No paid subscription to resume');
+        }
+        if (!set.pendingCancelAt) {
+            throw new common_1.BadRequestException('Subscription is not scheduled for cancellation');
+        }
+        const user = await this.userRepo.findOne({ where: { userId } });
+        if (!user?.stripeCustomerId) {
+            throw new common_1.BadRequestException('Add a payment method before resuming');
+        }
+        const { data: cards } = await this.stripe.paymentMethods.list({
+            customer: user.stripeCustomerId,
+            type: 'card',
+            limit: 1,
+        });
+        if (cards.length === 0) {
+            throw new common_1.BadRequestException('Add a payment method before resuming');
+        }
+        let sub;
+        try {
+            sub = await this.stripe.subscriptions.update(set.stripeSubscriptionId, {
+                cancel_at_period_end: false,
+            });
+        }
+        catch (err) {
+            this.logger.error(`Stripe resume failed for ${set.stripeSubscriptionId}: ${err}`);
+            throw new common_1.BadRequestException('This subscription has already ended — create the set again to restart it');
+        }
+        set.pendingCancelAt = null;
+        await this.setRepo.save(set);
+        return { resumed: true, nextBillingAt: this.resolveCancelAt(sub) };
     }
     async updateSenders(userId, setId, senders) {
         const set = await this.setRepo.findOne({

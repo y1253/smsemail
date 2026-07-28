@@ -352,6 +352,7 @@ Reply STOP to unsubscribe`);
             await this.signalwireService.sendSms(set.phone.phone, warning);
         }
         set.deletedAt = new Date();
+        set.pendingCancelAt = null;
         await this.setRepo.save(set);
     }
     async renewExpiringWatches() {

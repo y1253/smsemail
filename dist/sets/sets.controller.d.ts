@@ -36,7 +36,11 @@ export declare class SetsController {
         updated: true;
     }>;
     cancelSubscription(setId: number, user: JwtPayload): Promise<{
-        cancelAt: Date;
+        cancelAt: Date | null;
+    }>;
+    resumeSubscription(setId: number, user: JwtPayload): Promise<{
+        resumed: true;
+        nextBillingAt: Date | null;
     }>;
 }
 export {};

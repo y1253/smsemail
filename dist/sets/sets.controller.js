@@ -42,6 +42,9 @@ let SetsController = class SetsController {
     async cancelSubscription(setId, user) {
         return this.setsService.cancelSetSubscription(user.user_id, setId);
     }
+    async resumeSubscription(setId, user) {
+        return this.setsService.resumeSetSubscription(user.user_id, setId);
+    }
 };
 exports.SetsController = SetsController;
 __decorate([
@@ -97,6 +100,15 @@ __decorate([
     __metadata("design:paramtypes", [Number, Object]),
     __metadata("design:returntype", Promise)
 ], SetsController.prototype, "cancelSubscription", null);
+__decorate([
+    (0, common_1.Post)(':setId/resume'),
+    (0, common_1.UseGuards)(auth_guard_1.AuthGuard),
+    __param(0, (0, common_1.Param)('setId', common_1.ParseIntPipe)),
+    __param(1, (0, current_user_decorator_1.CurrentUser)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Number, Object]),
+    __metadata("design:returntype", Promise)
+], SetsController.prototype, "resumeSubscription", null);
 exports.SetsController = SetsController = __decorate([
     (0, common_1.Controller)('sets'),
     __metadata("design:paramtypes", [sets_service_1.SetsService])
