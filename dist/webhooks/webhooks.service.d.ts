@@ -21,6 +21,7 @@ export declare class WebhooksService {
     private readonly openAiService;
     private readonly signalwireService;
     private static readonly SMS_LIMIT;
+    private static readonly MESSAGE_RETENTION_DAYS;
     private readonly logger;
     private readonly stripe;
     constructor(emailRepo: Repository<Email>, phoneRepo: Repository<Phone>, setRepo: Repository<EmailPhoneSet>, incomeMessageRepo: Repository<IncomeMessage>, pendingRepo: Repository<PendingSmsCommand>, config: ConfigService, emailsService: EmailsService, gmailService: GmailService, openAiService: OpenAiService, signalwireService: SignalwireService);
@@ -33,6 +34,8 @@ export declare class WebhooksService {
     private buildSelectPrompt;
     handleStripeWebhook(rawBody: Buffer, sig: string): Promise<void>;
     renewExpiringWatches(): Promise<void>;
+    pruneOldMessages(): Promise<void>;
+    private createIncomeMessage;
     private extractEmailAddress;
     private formatSender;
     private smsScaffold;

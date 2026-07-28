@@ -33,6 +33,7 @@ const gmail_service_1 = require("../gmail/gmail.service");
 const openai_service_1 = require("../openai/openai.service");
 const signalwire_service_1 = require("../signalwire/signalwire.service");
 const text_util_1 = require("../common/text.util");
+const id_util_1 = require("../common/id.util");
 let WebhooksService = class WebhooksService {
     static { WebhooksService_1 = this; }
     emailRepo;
@@ -46,6 +47,7 @@ let WebhooksService = class WebhooksService {
     openAiService;
     signalwireService;
     static SMS_LIMIT = 160;
+    static MESSAGE_RETENTION_DAYS = 30;
     logger = new common_1.Logger(WebhooksService_1.name);
     stripe;
     constructor(emailRepo, phoneRepo, setRepo, incomeMessageRepo, pendingRepo, config, emailsService, gmailService, openAiService, signalwireService) {
@@ -92,7 +94,7 @@ let WebhooksService = class WebhooksService {
                     this.logger.debug(`Skipping message ${raw.id} (labels: ${msg.labels.join(', ')})`);
                     continue;
                 }
-                const record = this.incomeMessageRepo.create({
+                const saved = await this.createIncomeMessage({
                     email,
                     createdAt: new Date(),
                     gmailMessageId: msg.gmailMessageId,
@@ -100,7 +102,6 @@ let WebhooksService = class WebhooksService {
                     sender: msg.sender.slice(0, 145),
                     subject: msg.subject.slice(0, 255),
                 });
-                const saved = await this.incomeMessageRepo.save(record);
                 const { bodyBudget } = this.smsScaffold(msg.sender, email.email, msg.attachmentCount, saved.messageId);
                 const summary = await this.openAiService.summarize(msg.subject, msg.body, bodyBudget);
                 const sms = this.buildSms(msg.sender, summary, msg.attachmentCount, saved.messageId, email.email);
@@ -153,8 +154,8 @@ let WebhooksService = class WebhooksService {
 Reply to last email:
 R your message here
 
-Reply to email 42:
-R 42 your message here
+Reply to email 481920:
+R 481920 your message here
 
 Send new email:
 S someone@example.com your message
@@ -223,7 +224,7 @@ Reply STOP to unsubscribe`);
                 const replyText = trimmed.replace(/^R\s+/i, '');
                 const latest = await this.incomeMessageRepo.findOne({
                     where: { email: { emailId: (0, typeorm_2.In)(emailIds) } },
-                    order: { messageId: 'DESC' },
+                    order: { createdAt: 'DESC', messageId: 'DESC' },
                     relations: ['email'],
                 });
                 if (!latest)
@@ -376,6 +377,27 @@ Reply STOP to unsubscribe`);
             }
         }
     }
+    async pruneOldMessages() {
+        const cutoff = new Date(Date.now() - WebhooksService_1.MESSAGE_RETENTION_DAYS * 24 * 60 * 60 * 1000);
+        const { affected } = await this.incomeMessageRepo.delete({ createdAt: (0, typeorm_2.LessThan)(cutoff) });
+        if (affected) {
+            this.logger.log(`Pruned ${affected} income_message rows older than ${WebhooksService_1.MESSAGE_RETENTION_DAYS} days`);
+        }
+    }
+    async createIncomeMessage(data) {
+        for (let attempt = 0; attempt < 5; attempt++) {
+            const record = this.incomeMessageRepo.create({ ...data, messageId: (0, id_util_1.randomMessageId)() });
+            try {
+                await this.incomeMessageRepo.insert(record);
+                return record;
+            }
+            catch (err) {
+                if (err?.code !== 'ER_DUP_ENTRY')
+                    throw err;
+            }
+        }
+        throw new Error('Could not allocate a unique message id after 5 attempts');
+    }
     extractEmailAddress(sender) {
         const match = sender.match(/<([^>]+)>/);
         return (match ? match[1] : sender).trim().toLowerCase();
@@ -410,6 +432,12 @@ __decorate([
     __metadata("design:paramtypes", []),
     __metadata("design:returntype", Promise)
 ], WebhooksService.prototype, "renewExpiringWatches", null);
+__decorate([
+    (0, schedule_1.Cron)('0 3 * * *'),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", []),
+    __metadata("design:returntype", Promise)
+], WebhooksService.prototype, "pruneOldMessages", null);
 exports.WebhooksService = WebhooksService = WebhooksService_1 = __decorate([
     (0, common_1.Injectable)(),
     __param(0, (0, typeorm_1.InjectRepository)(email_entity_1.Email)),

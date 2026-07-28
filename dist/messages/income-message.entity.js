@@ -32,6 +32,7 @@ __decorate([
     __metadata("design:type", email_entity_1.Email)
 ], IncomeMessage.prototype, "email", void 0);
 __decorate([
+    (0, typeorm_1.Index)(),
     (0, typeorm_1.Column)({ name: 'create_at', type: 'datetime' }),
     __metadata("design:type", Date)
 ], IncomeMessage.prototype, "createdAt", void 0);

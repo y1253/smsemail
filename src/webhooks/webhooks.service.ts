@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, IsNull, In, MoreThan } from 'typeorm';
+import { Repository, IsNull, In, MoreThan, LessThan } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
 import { Cron } from '@nestjs/schedule';
 import Stripe from 'stripe';
@@ -14,11 +14,16 @@ import { GmailService } from '../gmail/gmail.service';
 import { OpenAiService } from '../openai/openai.service';
 import { SignalwireService } from '../signalwire/signalwire.service';
 import { ellipsize, fitToSentence } from '../common/text.util';
+import { randomMessageId } from '../common/id.util';
 
 @Injectable()
 export class WebhooksService {
   // Single-segment GSM-7 SMS character limit; every summary SMS is built to fit.
   private static readonly SMS_LIMIT = 160;
+  // Message ids are random out of a ~900k space, so the table has to stay
+  // bounded or allocation starts colliding. Anything past this window is
+  // pruned nightly and can no longer be replied to by number.
+  private static readonly MESSAGE_RETENTION_DAYS = 30;
   private readonly logger = new Logger(WebhooksService.name);
   private readonly stripe: Stripe;
 
@@ -78,9 +83,10 @@ export class WebhooksService {
           continue;
         }
 
-        // Save first so we know the real messageId, which the footer (and thus
-        // the exact body budget) depends on.
-        const record = this.incomeMessageRepo.create({
+        // Insert first: the row must exist before the SMS goes out so the
+        // "R <id>" reply can find it, and the footer (and thus the exact body
+        // budget) depends on the id.
+        const saved = await this.createIncomeMessage({
           email,
           createdAt: new Date(),
           gmailMessageId: msg.gmailMessageId,
@@ -88,7 +94,6 @@ export class WebhooksService {
           sender: msg.sender.slice(0, 145),
           subject: msg.subject.slice(0, 255),
         });
-        const saved = await this.incomeMessageRepo.save(record);
 
         const { bodyBudget } = this.smsScaffold(
           msg.sender,
@@ -158,8 +163,8 @@ export class WebhooksService {
 Reply to last email:
 R your message here
 
-Reply to email 42:
-R 42 your message here
+Reply to email 481920:
+R 481920 your message here
 
 Send new email:
 S someone@example.com your message
@@ -234,7 +239,8 @@ Reply STOP to unsubscribe`,
         const replyText = trimmed.replace(/^R\s+/i, '');
         const latest = await this.incomeMessageRepo.findOne({
           where: { email: { emailId: In(emailIds) } },
-          order: { messageId: 'DESC' },
+          // By time, not by id — ids are random, so they say nothing about age.
+          order: { createdAt: 'DESC', messageId: 'DESC' },
           relations: ['email'],
         });
         if (!latest) throw new Error('No messages to reply to');
@@ -417,6 +423,40 @@ Reply STOP to unsubscribe`,
         this.logger.error(`Failed to renew Gmail watch for email ${email.emailId}: ${err}`);
       }
     }
+  }
+
+  @Cron('0 3 * * *')
+  async pruneOldMessages(): Promise<void> {
+    const cutoff = new Date(
+      Date.now() - WebhooksService.MESSAGE_RETENTION_DAYS * 24 * 60 * 60 * 1000,
+    );
+    // Safe to hard-delete: nothing has a foreign key onto income_message.
+    const { affected } = await this.incomeMessageRepo.delete({ createdAt: LessThan(cutoff) });
+    if (affected) {
+      this.logger.log(
+        `Pruned ${affected} income_message rows older than ${WebhooksService.MESSAGE_RETENTION_DAYS} days`,
+      );
+    }
+  }
+
+  // Assigns a random id rather than letting MySQL auto-increment, so the
+  // number a user sees in their SMS doesn't reveal the message count. The id
+  // space is finite, so retry on the (rare) primary-key collision.
+  private async createIncomeMessage(data: Partial<IncomeMessage>): Promise<IncomeMessage> {
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const record = this.incomeMessageRepo.create({ ...data, messageId: randomMessageId() });
+      try {
+        // insert(), NOT save(): save() with a pre-set primary key does a SELECT
+        // first and would UPDATE a colliding row instead of failing, silently
+        // clobbering someone else's message.
+        await this.incomeMessageRepo.insert(record);
+        return record;
+      } catch (err: any) {
+        if (err?.code !== 'ER_DUP_ENTRY') throw err;
+      }
+    }
+    // Means the table has outgrown the id space — shorten MESSAGE_RETENTION_DAYS.
+    throw new Error('Could not allocate a unique message id after 5 attempts');
   }
 
   private extractEmailAddress(sender: string): string {

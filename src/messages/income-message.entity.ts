@@ -4,6 +4,7 @@ import {
   Column,
   ManyToOne,
   JoinColumn,
+  Index,
 } from 'typeorm';
 import { Email } from '../emails/email.entity';
 
@@ -16,6 +17,9 @@ export class IncomeMessage {
   @JoinColumn({ name: 'email_id' })
   email!: Email;
 
+  // Indexed: message ids are random, so this is both the "latest message"
+  // sort key and the cutoff the daily prune scans on.
+  @Index()
   @Column({ name: 'create_at', type: 'datetime' })
   createdAt!: Date;
 
