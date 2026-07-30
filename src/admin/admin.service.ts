@@ -1,25 +1,29 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { User } from '../users/user.entity';
 import { EmailPhoneSet } from '../sets/email-phone-set.entity';
-import { Transaction } from '../transactions/transaction.entity';
 import { DeletedEmail } from '../emails/deleted-email.entity';
 import { DeletedPhone } from '../phones/deleted-phone.entity';
+import { BillingService, type BillingInvoice } from '../billing/billing.service';
+
+/** The admin card is unpaginated; 100 is the max the Stripe list DTO allows. */
+const ADMIN_INVOICE_LIMIT = 100;
 
 @Injectable()
 export class AdminService {
+  private readonly logger = new Logger(AdminService.name);
+
   constructor(
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
     @InjectRepository(EmailPhoneSet)
     private readonly setRepo: Repository<EmailPhoneSet>,
-    @InjectRepository(Transaction)
-    private readonly transactionRepo: Repository<Transaction>,
     @InjectRepository(DeletedEmail)
     private readonly deletedEmailRepo: Repository<DeletedEmail>,
     @InjectRepository(DeletedPhone)
     private readonly deletedPhoneRepo: Repository<DeletedPhone>,
+    private readonly billingService: BillingService,
   ) {}
 
   async getDeletedContacts() {
@@ -100,11 +104,8 @@ export class AdminService {
       .orderBy('set.created_at', 'DESC')
       .getMany();
 
-    const transactions = await this.transactionRepo
-      .createQueryBuilder('transaction')
-      .where('transaction.user_id = :userId', { userId })
-      .orderBy('transaction.created_at', 'DESC')
-      .getMany();
+    const { transactions, transactionsError } =
+      await this.loadTransactions(userId);
 
     const mappedSets = sets.map((s) => ({
       setId: s.setId,
@@ -145,10 +146,36 @@ export class AdminService {
         total: mappedSets.length,
         active: mappedSets.filter((s) => s.status !== 'cancelled').length,
       },
-      transactions: transactions.map((t) => ({
-        amount: t.amount,
-        createdAt: t.createdAt,
-      })),
+      transactions,
+      transactionsError,
     };
+  }
+
+  /**
+   * Transaction history comes live from Stripe via BillingService — the same
+   * source the user's own Billing page reads. The `transaction` table is never
+   * written to, so querying it showed "no transactions" for every account.
+   *
+   * A Stripe failure must not take down the whole account page, so it degrades
+   * to an empty list plus a message. An empty list with no message is the
+   * genuine "no charges yet" case (users without a stripeCustomerId land here).
+   */
+  private async loadTransactions(userId: number): Promise<{
+    transactions: BillingInvoice[];
+    transactionsError: string | null;
+  }> {
+    try {
+      const page = await this.billingService.listInvoicesForUser(userId, {
+        limit: ADMIN_INVOICE_LIMIT,
+      });
+      return { transactions: page.data, transactionsError: null };
+    } catch (err: any) {
+      this.logger.error(`Stripe invoice list failed for user ${userId}: ${err}`);
+      return {
+        transactions: [],
+        transactionsError:
+          err?.response?.message ?? 'Could not load transactions from Stripe',
+      };
+    }
   }
 }

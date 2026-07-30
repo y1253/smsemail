@@ -65,9 +65,7 @@ export declare class AdminController {
             total: number;
             active: number;
         };
-        transactions: {
-            amount: string;
-            createdAt: Date;
-        }[];
+        transactions: import("../billing/billing.service").BillingInvoice[];
+        transactionsError: string | null;
     }>;
 }

@@ -1,16 +1,17 @@
 import { Repository } from 'typeorm';
 import { User } from '../users/user.entity';
 import { EmailPhoneSet } from '../sets/email-phone-set.entity';
-import { Transaction } from '../transactions/transaction.entity';
 import { DeletedEmail } from '../emails/deleted-email.entity';
 import { DeletedPhone } from '../phones/deleted-phone.entity';
+import { BillingService, type BillingInvoice } from '../billing/billing.service';
 export declare class AdminService {
     private readonly userRepo;
     private readonly setRepo;
-    private readonly transactionRepo;
     private readonly deletedEmailRepo;
     private readonly deletedPhoneRepo;
-    constructor(userRepo: Repository<User>, setRepo: Repository<EmailPhoneSet>, transactionRepo: Repository<Transaction>, deletedEmailRepo: Repository<DeletedEmail>, deletedPhoneRepo: Repository<DeletedPhone>);
+    private readonly billingService;
+    private readonly logger;
+    constructor(userRepo: Repository<User>, setRepo: Repository<EmailPhoneSet>, deletedEmailRepo: Repository<DeletedEmail>, deletedPhoneRepo: Repository<DeletedPhone>, billingService: BillingService);
     getDeletedContacts(): Promise<{
         emails: {
             userId: number;
@@ -71,9 +72,8 @@ export declare class AdminService {
             total: number;
             active: number;
         };
-        transactions: {
-            amount: string;
-            createdAt: Date;
-        }[];
+        transactions: BillingInvoice[];
+        transactionsError: string | null;
     }>;
+    private loadTransactions;
 }

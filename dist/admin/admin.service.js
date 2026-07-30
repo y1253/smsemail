@@ -11,6 +11,7 @@ var __metadata = (this && this.__metadata) || function (k, v) {
 var __param = (this && this.__param) || function (paramIndex, decorator) {
     return function (target, key) { decorator(target, key, paramIndex); }
 };
+var AdminService_1;
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.AdminService = void 0;
 const common_1 = require("@nestjs/common");
@@ -18,21 +19,23 @@ const typeorm_1 = require("@nestjs/typeorm");
 const typeorm_2 = require("typeorm");
 const user_entity_1 = require("../users/user.entity");
 const email_phone_set_entity_1 = require("../sets/email-phone-set.entity");
-const transaction_entity_1 = require("../transactions/transaction.entity");
 const deleted_email_entity_1 = require("../emails/deleted-email.entity");
 const deleted_phone_entity_1 = require("../phones/deleted-phone.entity");
-let AdminService = class AdminService {
+const billing_service_1 = require("../billing/billing.service");
+const ADMIN_INVOICE_LIMIT = 100;
+let AdminService = AdminService_1 = class AdminService {
     userRepo;
     setRepo;
-    transactionRepo;
     deletedEmailRepo;
     deletedPhoneRepo;
-    constructor(userRepo, setRepo, transactionRepo, deletedEmailRepo, deletedPhoneRepo) {
+    billingService;
+    logger = new common_1.Logger(AdminService_1.name);
+    constructor(userRepo, setRepo, deletedEmailRepo, deletedPhoneRepo, billingService) {
         this.userRepo = userRepo;
         this.setRepo = setRepo;
-        this.transactionRepo = transactionRepo;
         this.deletedEmailRepo = deletedEmailRepo;
         this.deletedPhoneRepo = deletedPhoneRepo;
+        this.billingService = billingService;
     }
     async getDeletedContacts() {
         const [emails, phones] = await Promise.all([
@@ -101,11 +104,7 @@ let AdminService = class AdminService {
             .where('email.user_id = :userId', { userId })
             .orderBy('set.created_at', 'DESC')
             .getMany();
-        const transactions = await this.transactionRepo
-            .createQueryBuilder('transaction')
-            .where('transaction.user_id = :userId', { userId })
-            .orderBy('transaction.created_at', 'DESC')
-            .getMany();
+        const { transactions, transactionsError } = await this.loadTransactions(userId);
         const mappedSets = sets.map((s) => ({
             setId: s.setId,
             createdAt: s.createdAt,
@@ -144,25 +143,37 @@ let AdminService = class AdminService {
                 total: mappedSets.length,
                 active: mappedSets.filter((s) => s.status !== 'cancelled').length,
             },
-            transactions: transactions.map((t) => ({
-                amount: t.amount,
-                createdAt: t.createdAt,
-            })),
+            transactions,
+            transactionsError,
         };
+    }
+    async loadTransactions(userId) {
+        try {
+            const page = await this.billingService.listInvoicesForUser(userId, {
+                limit: ADMIN_INVOICE_LIMIT,
+            });
+            return { transactions: page.data, transactionsError: null };
+        }
+        catch (err) {
+            this.logger.error(`Stripe invoice list failed for user ${userId}: ${err}`);
+            return {
+                transactions: [],
+                transactionsError: err?.response?.message ?? 'Could not load transactions from Stripe',
+            };
+        }
     }
 };
 exports.AdminService = AdminService;
-exports.AdminService = AdminService = __decorate([
+exports.AdminService = AdminService = AdminService_1 = __decorate([
     (0, common_1.Injectable)(),
     __param(0, (0, typeorm_1.InjectRepository)(user_entity_1.User)),
     __param(1, (0, typeorm_1.InjectRepository)(email_phone_set_entity_1.EmailPhoneSet)),
-    __param(2, (0, typeorm_1.InjectRepository)(transaction_entity_1.Transaction)),
-    __param(3, (0, typeorm_1.InjectRepository)(deleted_email_entity_1.DeletedEmail)),
-    __param(4, (0, typeorm_1.InjectRepository)(deleted_phone_entity_1.DeletedPhone)),
+    __param(2, (0, typeorm_1.InjectRepository)(deleted_email_entity_1.DeletedEmail)),
+    __param(3, (0, typeorm_1.InjectRepository)(deleted_phone_entity_1.DeletedPhone)),
     __metadata("design:paramtypes", [typeorm_2.Repository,
         typeorm_2.Repository,
         typeorm_2.Repository,
         typeorm_2.Repository,
-        typeorm_2.Repository])
+        billing_service_1.BillingService])
 ], AdminService);
 //# sourceMappingURL=admin.service.js.map

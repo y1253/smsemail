@@ -22,6 +22,7 @@ exports.BillingModule = BillingModule = __decorate([
         imports: [typeorm_1.TypeOrmModule.forFeature([user_entity_1.User, email_phone_set_entity_1.EmailPhoneSet]), auth_module_1.AuthModule],
         controllers: [billing_controller_1.BillingController],
         providers: [billing_service_1.BillingService],
+        exports: [billing_service_1.BillingService],
     })
 ], BillingModule);
 //# sourceMappingURL=billing.module.js.map
