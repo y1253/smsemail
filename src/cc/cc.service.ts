@@ -97,6 +97,47 @@ export class CcService {
     }
 
     await this.stripe.paymentMethods.detach(paymentMethodId);
+    await this.promoteNewDefaultCard(user.stripeCustomerId, paymentMethodId);
     return { deleted: paymentMethodId };
+  }
+
+  /**
+   * Detaching the customer's default card leaves them with no default, so the
+   * next renewal invoice fails and the webhook tears their sets down. If another
+   * card is still on file, make it the default. Best-effort: a failure here must
+   * not fail the delete the user already asked for.
+   */
+  private async promoteNewDefaultCard(
+    customerId: string,
+    detachedPaymentMethodId: string,
+  ): Promise<void> {
+    try {
+      const customer = await this.stripe.customers.retrieve(customerId);
+      if (customer.deleted) return;
+
+      const currentDefault = customer.invoice_settings?.default_payment_method;
+      const currentDefaultId =
+        typeof currentDefault === 'string'
+          ? currentDefault
+          : (currentDefault?.id ?? null);
+
+      // Stripe may have already cleared it on detach — treat both as "was default".
+      if (currentDefaultId && currentDefaultId !== detachedPaymentMethodId) return;
+
+      const { data } = await this.stripe.paymentMethods.list({
+        customer: customerId,
+        type: 'card',
+        limit: 1,
+      });
+      if (!data.length) return;
+
+      await this.stripe.customers.update(customerId, {
+        invoice_settings: { default_payment_method: data[0].id },
+      });
+    } catch (err) {
+      this.logger.error(
+        `Failed to promote a new default card for ${customerId}: ${err}`,
+      );
+    }
   }
 }

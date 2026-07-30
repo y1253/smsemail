@@ -15,6 +15,7 @@ const db_config_module_1 = require("./db-config/db-config.module");
 const config_1 = require("@nestjs/config");
 const users_module_1 = require("./users/users.module");
 const cc_module_1 = require("./cc/cc.module");
+const billing_module_1 = require("./billing/billing.module");
 const emails_module_1 = require("./emails/emails.module");
 const signalwire_module_1 = require("./signalwire/signalwire.module");
 const phones_module_1 = require("./phones/phones.module");
@@ -35,6 +36,7 @@ exports.AppModule = AppModule = __decorate([
             signalwire_module_1.SignalwireModule,
             users_module_1.UsersModule,
             cc_module_1.CcModule,
+            billing_module_1.BillingModule,
             emails_module_1.EmailsModule,
             phones_module_1.PhonesModule,
             sets_module_1.SetsModule,

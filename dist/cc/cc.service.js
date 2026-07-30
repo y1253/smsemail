@@ -99,7 +99,34 @@ let CcService = CcService_1 = class CcService {
             throw new common_1.BadRequestException('Card does not belong to this user');
         }
         await this.stripe.paymentMethods.detach(paymentMethodId);
+        await this.promoteNewDefaultCard(user.stripeCustomerId, paymentMethodId);
         return { deleted: paymentMethodId };
+    }
+    async promoteNewDefaultCard(customerId, detachedPaymentMethodId) {
+        try {
+            const customer = await this.stripe.customers.retrieve(customerId);
+            if (customer.deleted)
+                return;
+            const currentDefault = customer.invoice_settings?.default_payment_method;
+            const currentDefaultId = typeof currentDefault === 'string'
+                ? currentDefault
+                : (currentDefault?.id ?? null);
+            if (currentDefaultId && currentDefaultId !== detachedPaymentMethodId)
+                return;
+            const { data } = await this.stripe.paymentMethods.list({
+                customer: customerId,
+                type: 'card',
+                limit: 1,
+            });
+            if (!data.length)
+                return;
+            await this.stripe.customers.update(customerId, {
+                invoice_settings: { default_payment_method: data[0].id },
+            });
+        }
+        catch (err) {
+            this.logger.error(`Failed to promote a new default card for ${customerId}: ${err}`);
+        }
     }
 };
 exports.CcService = CcService;

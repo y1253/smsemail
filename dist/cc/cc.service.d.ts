@@ -20,4 +20,5 @@ export declare class CcService {
     deletePaymentMethodForUser(userId: number, paymentMethodId: string): Promise<{
         deleted: string;
     }>;
+    private promoteNewDefaultCard;
 }

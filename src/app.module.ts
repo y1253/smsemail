@@ -6,6 +6,7 @@ import { DbConfigModule } from './db-config/db-config.module';
 import { ConfigModule } from '@nestjs/config';
 import { UsersModule } from './users/users.module';
 import { CcModule } from './cc/cc.module';
+import { BillingModule } from './billing/billing.module';
 import { EmailsModule } from './emails/emails.module';
 import { SignalwireModule } from './signalwire/signalwire.module';
 import { PhonesModule } from './phones/phones.module';
@@ -23,6 +24,7 @@ import { PricingModule } from './pricing/pricing.module';
     SignalwireModule,
     UsersModule,
     CcModule,
+    BillingModule,
     EmailsModule,
     PhonesModule,
     SetsModule,
