@@ -13,6 +13,11 @@ export declare class AdminController {
         createdAt: Date;
         active: number | null;
         setCount: number;
+        nextRenewalAt: Date | null;
+        pendingCancelAt: Date | null;
+        pendingCancelCount: number;
+        promoCount: number;
+        subscriptionsError: string | null;
         emails: string[];
         phones: string[];
     }[]>;
@@ -51,6 +56,14 @@ export declare class AdminController {
             deletedAt: Date | null;
         }[];
         sets: {
+            amount: number | null;
+            currency: string | null;
+            interval: string | null;
+            status: "active" | "pending_cancel" | "cancelled";
+            renewsAt: Date | null;
+            endsAt: Date | null;
+            stripeStatus: string | null;
+            dbDrift: boolean;
             setId: number;
             createdAt: Date;
             deletedAt: Date | null;
@@ -59,13 +72,14 @@ export declare class AdminController {
             email: string;
             phone: string;
             promo: boolean;
-            status: string;
         }[];
         setCounts: {
             total: number;
             active: number;
         };
+        nextRenewalAt: Date | null;
         transactions: import("../billing/billing.service").BillingInvoice[];
         transactionsError: string | null;
+        subscriptionsError: string | null;
     }>;
 }

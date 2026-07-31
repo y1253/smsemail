@@ -23,6 +23,17 @@ const deleted_email_entity_1 = require("../emails/deleted-email.entity");
 const deleted_phone_entity_1 = require("../phones/deleted-phone.entity");
 const billing_service_1 = require("../billing/billing.service");
 const ADMIN_INVOICE_LIMIT = 100;
+function earliestRenewal(sets) {
+    const dates = sets
+        .filter((s) => !s.promo)
+        .map((s) => s.renewsAt)
+        .filter((d) => !!d);
+    return dates.length ? new Date(Math.min(...dates.map((d) => +d))) : null;
+}
+function earliestEnd(sets) {
+    const dates = sets.map((s) => s.endsAt).filter((d) => !!d);
+    return dates.length ? new Date(Math.min(...dates.map((d) => +d))) : null;
+}
 let AdminService = AdminService_1 = class AdminService {
     userRepo;
     setRepo;
@@ -66,26 +77,58 @@ let AdminService = AdminService_1 = class AdminService {
             .leftJoinAndSelect('user.phones', 'phone', 'phone.deleted_at IS NULL')
             .orderBy('user.create_at', 'DESC')
             .getMany();
-        const setCountRows = await this.setRepo
+        const liveSets = await this.setRepo
             .createQueryBuilder('set')
             .innerJoin('set.email', 'email')
             .select('email.user_id', 'userId')
-            .addSelect('COUNT(set.set_id)', 'count')
+            .addSelect('set.set_id', 'setId')
+            .addSelect('set.stripe_subscription_id', 'stripeSubscriptionId')
+            .addSelect('set.pending_cancel_at', 'pendingCancelAt')
             .where('set.deleted_at IS NULL')
-            .groupBy('email.user_id')
             .getRawMany();
-        const setCountByUser = new Map(setCountRows.map((r) => [Number(r.userId), Number(r.count)]));
-        return users.map((u) => ({
-            userId: u.userId,
-            name: [u.firstName, u.lastName].filter(Boolean).join(' ') || '—',
-            email: u.email,
-            authType: u.authType,
-            createdAt: u.createdAt,
-            active: u.active,
-            setCount: setCountByUser.get(u.userId) ?? 0,
-            emails: u.emails.map((e) => e.email),
-            phones: u.phones.map((p) => p.phone),
-        }));
+        const setsByUser = new Map();
+        for (const row of liveSets) {
+            const key = Number(row.userId);
+            const list = setsByUser.get(key);
+            if (list)
+                list.push(row);
+            else
+                setsByUser.set(key, [row]);
+        }
+        const { subs, error: subscriptionsError } = await this.billingService.loadAllStripeSubscriptions();
+        return users.map((u) => {
+            const mine = setsByUser.get(u.userId) ?? [];
+            const states = mine.map((row) => {
+                const promo = row.stripeSubscriptionId === 'PROMO';
+                const sub = !promo && row.stripeSubscriptionId
+                    ? (subs.get(row.stripeSubscriptionId) ?? null)
+                    : null;
+                return {
+                    promo,
+                    ...this.billingService.describeSubscription(sub, {
+                        deletedAt: null,
+                        pendingCancelAt: row.pendingCancelAt,
+                    }),
+                };
+            });
+            return {
+                userId: u.userId,
+                name: [u.firstName, u.lastName].filter(Boolean).join(' ') || '—',
+                email: u.email,
+                authType: u.authType,
+                createdAt: u.createdAt,
+                active: u.active,
+                setCount: mine.length,
+                nextRenewalAt: earliestRenewal(states),
+                pendingCancelAt: earliestEnd(states),
+                pendingCancelCount: states.filter((s) => s.status === 'pending_cancel')
+                    .length,
+                promoCount: states.filter((s) => s.promo).length,
+                subscriptionsError,
+                emails: u.emails.map((e) => e.email),
+                phones: u.phones.map((p) => p.phone),
+            };
+        });
     }
     async getAccountDetail(userId) {
         const user = await this.userRepo
@@ -104,22 +147,32 @@ let AdminService = AdminService_1 = class AdminService {
             .where('email.user_id = :userId', { userId })
             .orderBy('set.created_at', 'DESC')
             .getMany();
-        const { transactions, transactionsError } = await this.loadTransactions(userId);
-        const mappedSets = sets.map((s) => ({
-            setId: s.setId,
-            createdAt: s.createdAt,
-            deletedAt: s.deletedAt,
-            stripeSubscriptionId: s.stripeSubscriptionId,
-            pendingCancelAt: s.pendingCancelAt,
-            email: s.email?.email ?? null,
-            phone: s.phone?.phone ?? null,
-            promo: s.stripeSubscriptionId === 'PROMO',
-            status: s.deletedAt
-                ? 'cancelled'
-                : s.pendingCancelAt
-                    ? 'pending_cancel'
-                    : 'active',
-        }));
+        const [{ transactions, transactionsError }, { subs, error: subsError }] = await Promise.all([
+            this.loadTransactions(userId),
+            this.billingService.loadStripeSubscriptions(user.stripeCustomerId),
+        ]);
+        const mappedSets = sets.map((s) => {
+            const promo = s.stripeSubscriptionId === 'PROMO';
+            const sub = !promo && s.stripeSubscriptionId
+                ? (subs.get(s.stripeSubscriptionId) ?? null)
+                : null;
+            const state = this.billingService.describeSubscription(sub, s);
+            return {
+                setId: s.setId,
+                createdAt: s.createdAt,
+                deletedAt: s.deletedAt,
+                stripeSubscriptionId: s.stripeSubscriptionId,
+                pendingCancelAt: s.pendingCancelAt,
+                email: s.email?.email ?? null,
+                phone: s.phone?.phone ?? null,
+                promo,
+                ...state,
+                amount: promo ? 0 : state.amount,
+                currency: promo ? null : state.currency,
+                interval: promo ? null : state.interval,
+            };
+        });
+        const nextRenewalAt = earliestRenewal(mappedSets);
         return {
             userId: user.userId,
             name: [user.firstName, user.lastName].filter(Boolean).join(' ') || '—',
@@ -143,8 +196,10 @@ let AdminService = AdminService_1 = class AdminService {
                 total: mappedSets.length,
                 active: mappedSets.filter((s) => s.status !== 'cancelled').length,
             },
+            nextRenewalAt,
             transactions,
             transactionsError,
+            subscriptionsError: subsError,
         };
     }
     async loadTransactions(userId) {

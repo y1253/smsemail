@@ -1,5 +1,6 @@
 import { ConfigService } from '@nestjs/config';
 import { Repository } from 'typeorm';
+import Stripe from 'stripe';
 import { User } from '../users/user.entity';
 import { EmailPhoneSet } from '../sets/email-phone-set.entity';
 import { ListInvoicesDto } from './dto/list-invoices.dto';
@@ -36,6 +37,20 @@ export type BillingSubscription = {
     currency: string | null;
     interval: string | null;
 };
+export type SubscriptionLookup = {
+    subs: Map<string, Stripe.Subscription>;
+    error: string | null;
+};
+export type SubscriptionState = {
+    status: 'active' | 'pending_cancel' | 'cancelled';
+    renewsAt: Date | null;
+    endsAt: Date | null;
+    stripeStatus: string | null;
+    amount: number | null;
+    currency: string | null;
+    interval: string | null;
+    dbDrift: boolean;
+};
 export declare class BillingService {
     private readonly userRepo;
     private readonly setRepo;
@@ -47,6 +62,11 @@ export declare class BillingService {
     private toBillingInvoice;
     private resolveInvoiceSubscriptionId;
     listSubscriptionsForUser(userId: number): Promise<BillingSubscription[]>;
-    private loadStripeSubscriptions;
+    loadStripeSubscriptions(customerId: string | null | undefined): Promise<SubscriptionLookup>;
+    loadAllStripeSubscriptions(): Promise<SubscriptionLookup>;
+    describeSubscription(sub: Stripe.Subscription | null, set: {
+        deletedAt: Date | null;
+        pendingCancelAt: Date | null;
+    }): SubscriptionState;
     private resolvePeriodEnd;
 }

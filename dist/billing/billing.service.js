@@ -25,6 +25,8 @@ const stripe_1 = __importDefault(require("stripe"));
 const user_entity_1 = require("../users/user.entity");
 const email_phone_set_entity_1 = require("../sets/email-phone-set.entity");
 const DEFAULT_INVOICE_LIMIT = 24;
+const SUBSCRIPTION_PAGE_SIZE = 100;
+const MAX_SUBSCRIPTION_PAGES = 10;
 let BillingService = BillingService_1 = class BillingService {
     userRepo;
     setRepo;
@@ -99,7 +101,7 @@ let BillingService = BillingService_1 = class BillingService {
             relations: ['email', 'phone'],
             order: { createdAt: 'ASC' },
         });
-        const subs = await this.loadStripeSubscriptions(user.stripeCustomerId);
+        const { subs } = await this.loadStripeSubscriptions(user.stripeCustomerId);
         return sets.map((s) => {
             const promo = s.stripeSubscriptionId === 'PROMO';
             const sub = !promo && s.stripeSubscriptionId
@@ -125,22 +127,98 @@ let BillingService = BillingService_1 = class BillingService {
         });
     }
     async loadStripeSubscriptions(customerId) {
-        const map = new Map();
+        const subs = new Map();
         if (!customerId)
-            return map;
+            return { subs, error: null };
         try {
             const { data } = await this.stripe.subscriptions.list({
                 customer: customerId,
                 status: 'all',
-                limit: 100,
+                limit: SUBSCRIPTION_PAGE_SIZE,
             });
             for (const sub of data)
-                map.set(sub.id, sub);
+                subs.set(sub.id, sub);
         }
         catch (err) {
             this.logger.error(`Stripe subscription list failed: ${err}`);
+            return {
+                subs,
+                error: err?.raw?.message ?? 'Could not load subscriptions from Stripe',
+            };
         }
-        return map;
+        return { subs, error: null };
+    }
+    async loadAllStripeSubscriptions() {
+        const subs = new Map();
+        let startingAfter;
+        try {
+            for (let page = 0; page < MAX_SUBSCRIPTION_PAGES; page++) {
+                const res = await this.stripe.subscriptions.list({
+                    status: 'all',
+                    limit: SUBSCRIPTION_PAGE_SIZE,
+                    ...(startingAfter ? { starting_after: startingAfter } : {}),
+                });
+                for (const sub of res.data)
+                    subs.set(sub.id, sub);
+                if (!res.has_more)
+                    return { subs, error: null };
+                startingAfter = res.data[res.data.length - 1]?.id;
+                if (!startingAfter)
+                    return { subs, error: null };
+            }
+        }
+        catch (err) {
+            this.logger.error(`Stripe subscription list (all) failed: ${err}`);
+            return {
+                subs,
+                error: err?.raw?.message ?? 'Could not load subscriptions from Stripe',
+            };
+        }
+        this.logger.warn(`Stripe subscription list truncated at ${subs.size} subscriptions`);
+        return { subs, error: null };
+    }
+    describeSubscription(sub, set) {
+        const item = sub?.items?.data?.[0] ?? null;
+        const price = item?.price ?? null;
+        const money = {
+            stripeStatus: sub?.status ?? null,
+            amount: price?.unit_amount ?? null,
+            currency: price?.currency ?? null,
+            interval: price?.recurring?.interval ?? null,
+        };
+        const stripeCancelling = !!(sub?.cancel_at_period_end || sub?.cancel_at);
+        const dbDrift = !set.deletedAt && !!sub && stripeCancelling !== !!set.pendingCancelAt;
+        if (set.deletedAt || sub?.status === 'canceled') {
+            return { status: 'cancelled', renewsAt: null, endsAt: null, dbDrift: false, ...money };
+        }
+        if (stripeCancelling) {
+            const ts = sub.cancel_at ?? item?.current_period_end ?? null;
+            return {
+                status: 'pending_cancel',
+                renewsAt: null,
+                endsAt: ts ? new Date(ts * 1000) : set.pendingCancelAt,
+                dbDrift,
+                ...money,
+            };
+        }
+        if (!sub && set.pendingCancelAt) {
+            return {
+                status: 'pending_cancel',
+                renewsAt: null,
+                endsAt: set.pendingCancelAt,
+                dbDrift: false,
+                ...money,
+            };
+        }
+        return {
+            status: 'active',
+            renewsAt: item?.current_period_end
+                ? new Date(item.current_period_end * 1000)
+                : null,
+            endsAt: null,
+            dbDrift,
+            ...money,
+        };
     }
     resolvePeriodEnd(sub, pendingCancelAt) {
         if (!sub)

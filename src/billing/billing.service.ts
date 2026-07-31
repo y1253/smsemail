@@ -45,7 +45,35 @@ export type BillingSubscription = {
   interval: string | null;
 };
 
+/** Stripe subscriptions keyed by id, plus why the lookup came back short. */
+export type SubscriptionLookup = {
+  subs: Map<string, Stripe.Subscription>;
+  error: string | null;
+};
+
+/** A set's billing state, derived from Stripe rather than the DB. */
+export type SubscriptionState = {
+  status: 'active' | 'pending_cancel' | 'cancelled';
+  /** Next charge date. Null unless the subscription is actively renewing. */
+  renewsAt: Date | null;
+  /** When service stops. Null unless a cancellation is scheduled. */
+  endsAt: Date | null;
+  stripeStatus: string | null;
+  amount: number | null;
+  currency: string | null;
+  interval: string | null;
+  /**
+   * Stripe and `pending_cancel_at` disagree. Happens when a subscription is
+   * cancelled or resumed from the Stripe dashboard: that fires
+   * `customer.subscription.updated`, which WebhooksService does not handle, so
+   * the column is never written.
+   */
+  dbDrift: boolean;
+};
+
 const DEFAULT_INVOICE_LIMIT = 24;
+const SUBSCRIPTION_PAGE_SIZE = 100;
+const MAX_SUBSCRIPTION_PAGES = 10;
 
 @Injectable()
 export class BillingService {
@@ -152,7 +180,7 @@ export class BillingService {
       order: { createdAt: 'ASC' },
     });
 
-    const subs = await this.loadStripeSubscriptions(user.stripeCustomerId);
+    const { subs } = await this.loadStripeSubscriptions(user.stripeCustomerId);
 
     return sets.map((s) => {
       const promo = s.stripeSubscriptionId === 'PROMO';
@@ -185,26 +213,136 @@ export class BillingService {
 
   /**
    * One list call rather than N retrieves. A Stripe outage degrades the page to
-   * DB-only data instead of breaking it — cancel/resume stay usable.
+   * DB-only data instead of breaking it — cancel/resume stay usable. `error` is
+   * returned rather than thrown so callers can tell "Stripe is down" from "this
+   * customer has no subscriptions"; the Billing page ignores it, admin shows it.
    */
-  private async loadStripeSubscriptions(
+  async loadStripeSubscriptions(
     customerId: string | null | undefined,
-  ): Promise<Map<string, Stripe.Subscription>> {
-    const map = new Map<string, Stripe.Subscription>();
-    if (!customerId) return map;
+  ): Promise<SubscriptionLookup> {
+    const subs = new Map<string, Stripe.Subscription>();
+    if (!customerId) return { subs, error: null };
 
     try {
       const { data } = await this.stripe.subscriptions.list({
         customer: customerId,
         status: 'all',
-        limit: 100,
+        limit: SUBSCRIPTION_PAGE_SIZE,
       });
-      for (const sub of data) map.set(sub.id, sub);
-    } catch (err) {
+      for (const sub of data) subs.set(sub.id, sub);
+    } catch (err: any) {
       this.logger.error(`Stripe subscription list failed: ${err}`);
+      return {
+        subs,
+        error: err?.raw?.message ?? 'Could not load subscriptions from Stripe',
+      };
     }
 
-    return map;
+    return { subs, error: null };
+  }
+
+  /**
+   * Every subscription on the account, keyed by id — one call for the whole
+   * admin accounts list rather than one per user (N+1). Pages until Stripe says
+   * there is no more, bounded so a growing account can't spin here forever.
+   */
+  async loadAllStripeSubscriptions(): Promise<SubscriptionLookup> {
+    const subs = new Map<string, Stripe.Subscription>();
+    let startingAfter: string | undefined;
+
+    try {
+      for (let page = 0; page < MAX_SUBSCRIPTION_PAGES; page++) {
+        const res = await this.stripe.subscriptions.list({
+          status: 'all',
+          limit: SUBSCRIPTION_PAGE_SIZE,
+          ...(startingAfter ? { starting_after: startingAfter } : {}),
+        });
+        for (const sub of res.data) subs.set(sub.id, sub);
+
+        if (!res.has_more) return { subs, error: null };
+        startingAfter = res.data[res.data.length - 1]?.id;
+        if (!startingAfter) return { subs, error: null };
+      }
+    } catch (err: any) {
+      this.logger.error(`Stripe subscription list (all) failed: ${err}`);
+      return {
+        subs,
+        error: err?.raw?.message ?? 'Could not load subscriptions from Stripe',
+      };
+    }
+
+    // Fell out of the loop with has_more still true — report it rather than
+    // letting the tail of the list silently render as "no billing data".
+    this.logger.warn(
+      `Stripe subscription list truncated at ${subs.size} subscriptions`,
+    );
+    return { subs, error: null };
+  }
+
+  /**
+   * The single place a set's billing state is decided, shared by both admin
+   * views. Stripe is trusted over the DB: `pending_cancel_at` is only written
+   * by our own cancel endpoint, so a cancellation made in the Stripe dashboard
+   * leaves the column NULL and the set looking active when it isn't.
+   */
+  describeSubscription(
+    sub: Stripe.Subscription | null,
+    set: { deletedAt: Date | null; pendingCancelAt: Date | null },
+  ): SubscriptionState {
+    const item = sub?.items?.data?.[0] ?? null;
+    const price = item?.price ?? null;
+    const money = {
+      stripeStatus: sub?.status ?? null,
+      amount: price?.unit_amount ?? null,
+      currency: price?.currency ?? null,
+      interval: price?.recurring?.interval ?? null,
+    };
+
+    const stripeCancelling = !!(sub?.cancel_at_period_end || sub?.cancel_at);
+    // Only meaningful for a live set — a torn-down set legitimately has no
+    // pending cancel, and Stripe legitimately reports it as canceled.
+    const dbDrift =
+      !set.deletedAt && !!sub && stripeCancelling !== !!set.pendingCancelAt;
+
+    // Terminal: the set was torn down, its subscription cancelled outright.
+    if (set.deletedAt || sub?.status === 'canceled') {
+      return { status: 'cancelled', renewsAt: null, endsAt: null, dbDrift: false, ...money };
+    }
+
+    if (stripeCancelling) {
+      const ts = sub!.cancel_at ?? item?.current_period_end ?? null;
+      return {
+        status: 'pending_cancel',
+        renewsAt: null,
+        endsAt: ts ? new Date(ts * 1000) : set.pendingCancelAt,
+        dbDrift,
+        ...money,
+      };
+    }
+
+    // Stripe unreachable (or no subscription at all) — fall back to the DB flag
+    // so the page still reflects a cancellation we do know about.
+    if (!sub && set.pendingCancelAt) {
+      return {
+        status: 'pending_cancel',
+        renewsAt: null,
+        endsAt: set.pendingCancelAt,
+        dbDrift: false,
+        ...money,
+      };
+    }
+
+    return {
+      status: 'active',
+      // A pending-cancel subscription is never billed again, so a renewal date
+      // is only ever set on this branch.
+      renewsAt: item?.current_period_end
+        ? new Date(item.current_period_end * 1000)
+        : null,
+      endsAt: null,
+      dbDrift,
+      ...money,
+    };
   }
 
   /**
