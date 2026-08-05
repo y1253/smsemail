@@ -40,7 +40,9 @@ export class IncomeMessage {
   // In-Reply-To/References or the recipient's client shows a new conversation.
   // Nullable: rows written before this column existed have to fall back to
   // re-fetching the header from Gmail.
-  @Column({ name: 'rfc_message_id', length: 255, nullable: true })
+  // type is explicit: the `string | null` union reflects as Object, which
+  // TypeORM cannot map to a MySQL type on its own.
+  @Column({ name: 'rfc_message_id', type: 'varchar', length: 255, nullable: true })
   rfcMessageId!: string | null;
 
   @Column({ name: 'references_header', type: 'text', nullable: true })

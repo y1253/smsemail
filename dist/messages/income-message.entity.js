@@ -55,7 +55,7 @@ __decorate([
     __metadata("design:type", String)
 ], IncomeMessage.prototype, "subject", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ name: 'rfc_message_id', length: 255, nullable: true }),
+    (0, typeorm_1.Column)({ name: 'rfc_message_id', type: 'varchar', length: 255, nullable: true }),
     __metadata("design:type", Object)
 ], IncomeMessage.prototype, "rfcMessageId", void 0);
 __decorate([
