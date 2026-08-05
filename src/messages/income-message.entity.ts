@@ -34,5 +34,16 @@ export class IncomeMessage {
 
   @Column({ name: 'subject', length: 255 })
   subject!: string;
+
+  // RFC-5322 Message-ID header of the original mail (<...@mail.gmail.com>) —
+  // NOT gmailMessageId, which is Gmail's internal api id. Replies need this in
+  // In-Reply-To/References or the recipient's client shows a new conversation.
+  // Nullable: rows written before this column existed have to fall back to
+  // re-fetching the header from Gmail.
+  @Column({ name: 'rfc_message_id', length: 255, nullable: true })
+  rfcMessageId!: string | null;
+
+  @Column({ name: 'references_header', type: 'text', nullable: true })
+  referencesHeader!: string | null;
 }
 

@@ -86,6 +86,8 @@ let GmailService = class GmailService {
         return {
             gmailMessageId: msg.data.id,
             gmailThreadId: msg.data.threadId,
+            rfcMessageId: getHeader('Message-ID'),
+            references: getHeader('References'),
             sender,
             subject,
             body,
@@ -93,11 +95,11 @@ let GmailService = class GmailService {
             labels,
         };
     }
-    async sendReply(refreshToken, threadId, to, subject, body, from) {
+    async sendReply(refreshToken, threadId, to, subject, body, from, inReplyTo, references) {
         const auth = this.getAuthClient(refreshToken);
         const gmail = googleapis_1.google.gmail({ version: 'v1', auth });
-        const replySubject = !subject || subject.startsWith('Re:') ? subject : `Re: ${subject}`;
-        const raw = this.buildRaw(from, to, replySubject, body);
+        const replySubject = !subject || /^re:/i.test(subject) ? subject : `Re: ${subject}`;
+        const raw = this.buildRaw(from, to, replySubject, body, { inReplyTo, references });
         await gmail.users.messages.send({
             userId: 'me',
             requestBody: { raw, threadId },
@@ -166,11 +168,24 @@ let GmailService = class GmailService {
         }
         return result.join('\n').trim();
     }
-    buildRaw(from, to, subject, body) {
+    buildReferences(chain, inReplyTo) {
+        const ids = (chain ?? '').split(/\s+/).filter(Boolean);
+        if (ids[ids.length - 1] !== inReplyTo)
+            ids.push(inReplyTo);
+        return ids.join(' ');
+    }
+    buildRaw(from, to, subject, body, opts) {
+        const inReplyTo = opts?.inReplyTo?.trim();
         const lines = [
             `From: ${from}`,
             `To: ${to}`,
             ...(subject ? [`Subject: ${subject}`] : []),
+            ...(inReplyTo
+                ? [
+                    `In-Reply-To: ${inReplyTo}`,
+                    `References: ${this.buildReferences(opts?.references, inReplyTo)}`,
+                ]
+                : []),
             'MIME-Version: 1.0',
             'Content-Type: text/plain; charset=utf-8',
             '',

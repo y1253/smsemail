@@ -91,6 +91,8 @@ export class WebhooksService {
           createdAt: new Date(),
           gmailMessageId: msg.gmailMessageId,
           gmailThreadId: msg.gmailThreadId,
+          rfcMessageId: msg.rfcMessageId.slice(0, 255) || null,
+          referencesHeader: msg.references || null,
           sender: msg.sender.slice(0, 145),
           subject: msg.subject.slice(0, 255),
         });
@@ -298,13 +300,49 @@ Reply STOP to unsubscribe`,
       return;
     }
     const refreshToken = this.emailsService.decrypt(email.refreshToken);
+    const { rfcMessageId, referencesHeader } = await this.resolveThreadingHeaders(refreshToken, msg);
     try {
-      await this.gmailService.sendReply(refreshToken, msg.gmailThreadId, msg.sender, msg.subject, replyText, email.email);
+      await this.gmailService.sendReply(
+        refreshToken,
+        msg.gmailThreadId,
+        msg.sender,
+        msg.subject,
+        replyText,
+        email.email,
+        rfcMessageId,
+        referencesHeader,
+      );
     } catch (err) {
       await this.handleSendError(from, email, err);
       return;
     }
     await this.signalwireService.sendSms(from, `Sent to ${msg.sender}`);
+  }
+
+  /**
+   * Message-ID/References for a reply. Rows stored before those columns existed
+   * have neither, so re-fetch them from Gmail once and backfill. If the fetch
+   * fails (message deleted, token trouble) we still send — worst case the reply
+   * threads only on our side, which is the old behaviour.
+   */
+  private async resolveThreadingHeaders(
+    refreshToken: string,
+    msg: IncomeMessage,
+  ): Promise<{ rfcMessageId: string | null; referencesHeader: string | null }> {
+    if (msg.rfcMessageId) {
+      return { rfcMessageId: msg.rfcMessageId, referencesHeader: msg.referencesHeader };
+    }
+    try {
+      const fetched = await this.gmailService.fetchMessage(refreshToken, msg.gmailMessageId);
+      if (!fetched.rfcMessageId) return { rfcMessageId: null, referencesHeader: null };
+      const rfcMessageId = fetched.rfcMessageId.slice(0, 255);
+      const referencesHeader = fetched.references || null;
+      await this.incomeMessageRepo.update(msg.messageId, { rfcMessageId, referencesHeader });
+      return { rfcMessageId, referencesHeader };
+    } catch (err) {
+      this.logger.warn(`Could not fetch threading headers for message ${msg.messageId}: ${err}`);
+      return { rfcMessageId: null, referencesHeader: null };
+    }
   }
 
   /** Send a new email from a specific account. */

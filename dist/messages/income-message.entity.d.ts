@@ -7,4 +7,6 @@ export declare class IncomeMessage {
     gmailThreadId: string;
     sender: string;
     subject: string;
+    rfcMessageId: string | null;
+    referencesHeader: string | null;
 }

@@ -29,6 +29,7 @@ export declare class WebhooksService {
     handleInboundSms(from: string, body: string): Promise<void>;
     private parseSendCommand;
     private replyToMessage;
+    private resolveThreadingHeaders;
     private sendNewEmail;
     private handleSendError;
     private buildSelectPrompt;

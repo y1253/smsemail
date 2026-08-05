@@ -99,6 +99,8 @@ let WebhooksService = class WebhooksService {
                     createdAt: new Date(),
                     gmailMessageId: msg.gmailMessageId,
                     gmailThreadId: msg.gmailThreadId,
+                    rfcMessageId: msg.rfcMessageId.slice(0, 255) || null,
+                    referencesHeader: msg.references || null,
                     sender: msg.sender.slice(0, 145),
                     subject: msg.subject.slice(0, 255),
                 });
@@ -274,14 +276,33 @@ Reply STOP to unsubscribe`);
             return;
         }
         const refreshToken = this.emailsService.decrypt(email.refreshToken);
+        const { rfcMessageId, referencesHeader } = await this.resolveThreadingHeaders(refreshToken, msg);
         try {
-            await this.gmailService.sendReply(refreshToken, msg.gmailThreadId, msg.sender, msg.subject, replyText, email.email);
+            await this.gmailService.sendReply(refreshToken, msg.gmailThreadId, msg.sender, msg.subject, replyText, email.email, rfcMessageId, referencesHeader);
         }
         catch (err) {
             await this.handleSendError(from, email, err);
             return;
         }
         await this.signalwireService.sendSms(from, `Sent to ${msg.sender}`);
+    }
+    async resolveThreadingHeaders(refreshToken, msg) {
+        if (msg.rfcMessageId) {
+            return { rfcMessageId: msg.rfcMessageId, referencesHeader: msg.referencesHeader };
+        }
+        try {
+            const fetched = await this.gmailService.fetchMessage(refreshToken, msg.gmailMessageId);
+            if (!fetched.rfcMessageId)
+                return { rfcMessageId: null, referencesHeader: null };
+            const rfcMessageId = fetched.rfcMessageId.slice(0, 255);
+            const referencesHeader = fetched.references || null;
+            await this.incomeMessageRepo.update(msg.messageId, { rfcMessageId, referencesHeader });
+            return { rfcMessageId, referencesHeader };
+        }
+        catch (err) {
+            this.logger.warn(`Could not fetch threading headers for message ${msg.messageId}: ${err}`);
+            return { rfcMessageId: null, referencesHeader: null };
+        }
     }
     async sendNewEmail(from, email, to, subject, body) {
         if (!email.refreshToken) {

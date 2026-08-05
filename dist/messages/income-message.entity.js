@@ -20,6 +20,8 @@ let IncomeMessage = class IncomeMessage {
     gmailThreadId;
     sender;
     subject;
+    rfcMessageId;
+    referencesHeader;
 };
 exports.IncomeMessage = IncomeMessage;
 __decorate([
@@ -52,6 +54,14 @@ __decorate([
     (0, typeorm_1.Column)({ name: 'subject', length: 255 }),
     __metadata("design:type", String)
 ], IncomeMessage.prototype, "subject", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ name: 'rfc_message_id', length: 255, nullable: true }),
+    __metadata("design:type", Object)
+], IncomeMessage.prototype, "rfcMessageId", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ name: 'references_header', type: 'text', nullable: true }),
+    __metadata("design:type", Object)
+], IncomeMessage.prototype, "referencesHeader", void 0);
 exports.IncomeMessage = IncomeMessage = __decorate([
     (0, typeorm_1.Entity)('income_message')
 ], IncomeMessage);

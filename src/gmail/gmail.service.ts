@@ -86,6 +86,8 @@ export class GmailService {
   ): Promise<{
     gmailMessageId: string;
     gmailThreadId: string;
+    rfcMessageId: string;
+    references: string;
     sender: string;
     subject: string;
     body: string;
@@ -117,6 +119,11 @@ export class GmailService {
     return {
       gmailMessageId: msg.data.id!,
       gmailThreadId: msg.data.threadId!,
+      // Threading headers — needed so a reply lands in the same conversation
+      // in the *recipient's* mail client. Already in payload.headers, so this
+      // costs no extra api call.
+      rfcMessageId: getHeader('Message-ID'),
+      references: getHeader('References'),
       sender,
       subject,
       body,
@@ -132,13 +139,17 @@ export class GmailService {
     subject: string,
     body: string,
     from: string,
+    inReplyTo?: string | null,
+    references?: string | null,
   ): Promise<void> {
     const auth = this.getAuthClient(refreshToken);
     const gmail = google.gmail({ version: 'v1', auth });
 
-    const replySubject = !subject || subject.startsWith('Re:') ? subject : `Re: ${subject}`;
-    const raw = this.buildRaw(from, to, replySubject, body);
+    const replySubject = !subject || /^re:/i.test(subject) ? subject : `Re: ${subject}`;
+    const raw = this.buildRaw(from, to, replySubject, body, { inReplyTo, references });
 
+    // threadId threads the copy in our own mailbox; In-Reply-To/References
+    // (set in buildRaw) are what thread it for everyone else.
     await gmail.users.messages.send({
       userId: 'me',
       requestBody: { raw, threadId },
@@ -218,11 +229,32 @@ export class GmailService {
     return result.join('\n').trim();
   }
 
-  private buildRaw(from: string, to: string, subject: string, body: string): string {
+  // The parent's References chain plus the parent itself. Guard against a
+  // duplicate: some clients already list their own Message-ID in References.
+  private buildReferences(chain: string | null | undefined, inReplyTo: string): string {
+    const ids = (chain ?? '').split(/\s+/).filter(Boolean);
+    if (ids[ids.length - 1] !== inReplyTo) ids.push(inReplyTo);
+    return ids.join(' ');
+  }
+
+  private buildRaw(
+    from: string,
+    to: string,
+    subject: string,
+    body: string,
+    opts?: { inReplyTo?: string | null; references?: string | null },
+  ): string {
+    const inReplyTo = opts?.inReplyTo?.trim();
     const lines = [
       `From: ${from}`,
       `To: ${to}`,
       ...(subject ? [`Subject: ${subject}`] : []),
+      ...(inReplyTo
+        ? [
+            `In-Reply-To: ${inReplyTo}`,
+            `References: ${this.buildReferences(opts?.references, inReplyTo)}`,
+          ]
+        : []),
       'MIME-Version: 1.0',
       'Content-Type: text/plain; charset=utf-8',
       '',
