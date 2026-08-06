@@ -58,7 +58,14 @@ const crypto = __importStar(require("crypto"));
 const google_auth_library_1 = require("google-auth-library");
 const gmail_service_1 = require("../gmail/gmail.service");
 const sets_service_1 = require("../sets/sets.service");
-const REQUIRED_GMAIL_SCOPE = 'https://mail.google.com/';
+const GMAIL_READ_SCOPE = 'https://www.googleapis.com/auth/gmail.readonly';
+const GMAIL_SEND_SCOPE = 'https://www.googleapis.com/auth/gmail.send';
+const LEGACY_FULL_SCOPE = 'https://mail.google.com/';
+function hasRequiredGmailScopes(granted) {
+    if (granted.includes(LEGACY_FULL_SCOPE))
+        return true;
+    return granted.includes(GMAIL_READ_SCOPE) && granted.includes(GMAIL_SEND_SCOPE);
+}
 let EmailsService = EmailsService_1 = class EmailsService {
     emailRepo;
     deletedEmailRepo;
@@ -96,8 +103,8 @@ let EmailsService = EmailsService_1 = class EmailsService {
             throw new common_1.BadRequestException('Google did not return a refresh_token. Make sure you request offline access and prompt=consent.');
         }
         const grantedScopes = (tokens.scope ?? '').split(' ');
-        if (!grantedScopes.includes(REQUIRED_GMAIL_SCOPE)) {
-            throw new common_1.ForbiddenException("SMSMail needs permission to read and send your Gmail. On Google's consent screen, please check the box granting access to Gmail, then try again.");
+        if (!hasRequiredGmailScopes(grantedScopes)) {
+            throw new common_1.ForbiddenException("SMSMail needs permission to both read and send your Gmail. On Google's consent screen, please check both Gmail boxes, then try again.");
         }
         const idToken = tokens.id_token;
         if (!idToken) {

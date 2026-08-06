@@ -16,10 +16,19 @@ type JwtPayload = {
   email: string;
 };
 
-// Full-mailbox scope. Users grant it via a checkbox on Google's consent screen
-// that they can miss or leave unchecked — without it we can't watch/read/send
-// Gmail, so we must reject the connect before persisting anything.
-const REQUIRED_GMAIL_SCOPE = 'https://mail.google.com/';
+// Minimum Gmail access: read (watch / history / fetch bodies) + send (reply /
+// compose). Users grant these via two checkboxes on Google's consent screen that
+// they can miss or leave unchecked — without both we can't operate, so we must
+// reject the connect before persisting anything.
+const GMAIL_READ_SCOPE = 'https://www.googleapis.com/auth/gmail.readonly';
+const GMAIL_SEND_SCOPE = 'https://www.googleapis.com/auth/gmail.send';
+// Accounts connected before the scope narrowing hold this superset of both.
+const LEGACY_FULL_SCOPE = 'https://mail.google.com/';
+
+function hasRequiredGmailScopes(granted: string[]): boolean {
+  if (granted.includes(LEGACY_FULL_SCOPE)) return true;
+  return granted.includes(GMAIL_READ_SCOPE) && granted.includes(GMAIL_SEND_SCOPE);
+}
 
 @Injectable()
 export class EmailsService {
@@ -70,9 +79,9 @@ export class EmailsService {
     // any DB write guarantees an un-granted email is never persisted (and so
     // never becomes selectable in a set).
     const grantedScopes = (tokens.scope ?? '').split(' ');
-    if (!grantedScopes.includes(REQUIRED_GMAIL_SCOPE)) {
+    if (!hasRequiredGmailScopes(grantedScopes)) {
       throw new ForbiddenException(
-        "SMSMail needs permission to read and send your Gmail. On Google's consent screen, please check the box granting access to Gmail, then try again.",
+        "SMSMail needs permission to both read and send your Gmail. On Google's consent screen, please check both Gmail boxes, then try again.",
       );
     }
 
