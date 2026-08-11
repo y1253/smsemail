@@ -22,8 +22,10 @@ let WebhooksController = WebhooksController_1 = class WebhooksController {
     constructor(webhooksService) {
         this.webhooksService = webhooksService;
     }
-    async gmailPush(payload) {
-        await this.webhooksService.handleGmailPush(payload);
+    gmailPush(payload) {
+        void this.webhooksService
+            .handleGmailPush(payload)
+            .catch((err) => this.logger.error(`Gmail push handling failed: ${err}`));
     }
     async signalwireInbound(payload) {
         this.logger.debug(`SignalWire inbound payload: ${JSON.stringify(payload)}`);
@@ -52,7 +54,7 @@ __decorate([
     __param(0, (0, common_1.Body)()),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [Object]),
-    __metadata("design:returntype", Promise)
+    __metadata("design:returntype", void 0)
 ], WebhooksController.prototype, "gmailPush", null);
 __decorate([
     (0, common_1.Post)('signalwire'),

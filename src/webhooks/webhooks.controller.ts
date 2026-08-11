@@ -19,8 +19,17 @@ export class WebhooksController {
 
   @Post('gmail')
   @HttpCode(204)
-  async gmailPush(@Body() payload: Record<string, any>): Promise<void> {
-    await this.webhooksService.handleGmailPush(payload);
+  gmailPush(@Body() payload: Record<string, any>): void {
+    // Ack first, work after. The pipeline (Gmail fetch + OpenAI summary + SMS)
+    // routinely outruns Pub/Sub's ack deadline, and Pub/Sub answers a late ack
+    // by redelivering the identical notification — which used to replay the
+    // whole thing and text the user twice. Dropping Pub/Sub's retry is safe:
+    // handleGmailPush already isolates per-message failures, and lastHistoryId
+    // only advances past messages that were actually handled, so a genuinely
+    // lost notification is picked up by the next push.
+    void this.webhooksService
+      .handleGmailPush(payload)
+      .catch((err) => this.logger.error(`Gmail push handling failed: ${err}`));
   }
 
   @Post('signalwire')

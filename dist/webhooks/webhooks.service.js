@@ -50,6 +50,7 @@ let WebhooksService = class WebhooksService {
     static MESSAGE_RETENTION_DAYS = 30;
     logger = new common_1.Logger(WebhooksService_1.name);
     stripe;
+    pushChains = new Map();
     constructor(emailRepo, phoneRepo, setRepo, incomeMessageRepo, pendingRepo, config, emailsService, gmailService, openAiService, signalwireService) {
         this.emailRepo = emailRepo;
         this.phoneRepo = phoneRepo;
@@ -71,6 +72,18 @@ let WebhooksService = class WebhooksService {
         if (!encoded)
             return;
         const { emailAddress, historyId: newHistoryId } = JSON.parse(Buffer.from(encoded, 'base64').toString('utf-8'));
+        const previous = this.pushChains.get(emailAddress) ?? Promise.resolve();
+        const current = previous
+            .catch(() => undefined)
+            .then(() => this.processGmailPush(emailAddress, String(newHistoryId)));
+        this.pushChains.set(emailAddress, current);
+        void current.catch(() => undefined).then(() => {
+            if (this.pushChains.get(emailAddress) === current)
+                this.pushChains.delete(emailAddress);
+        });
+        return current;
+    }
+    async processGmailPush(emailAddress, newHistoryId) {
         const email = await this.emailRepo.findOne({
             where: { email: emailAddress, deletedAt: (0, typeorm_2.IsNull)() },
         });
@@ -82,47 +95,71 @@ let WebhooksService = class WebhooksService {
             where: { email: { emailId: email.emailId }, deletedAt: (0, typeorm_2.IsNull)() },
             relations: ['phone', 'allowedSenders'],
         });
-        if (!activeSets.length)
-            return;
-        for (const raw of rawMessages) {
-            if (!raw.id)
-                continue;
-            try {
-                const msg = await this.gmailService.fetchMessage(refreshToken, raw.id);
-                const isJunk = msg.labels.some((l) => ['CATEGORY_PROMOTIONS', 'CATEGORY_SOCIAL', 'CATEGORY_FORUMS', 'SENT', 'DRAFT'].includes(l));
-                if (isJunk) {
-                    this.logger.debug(`Skipping message ${raw.id} (labels: ${msg.labels.join(', ')})`);
+        if (activeSets.length) {
+            for (const raw of rawMessages) {
+                if (!raw.id)
                     continue;
-                }
-                const saved = await this.createIncomeMessage({
-                    email,
-                    createdAt: new Date(),
-                    gmailMessageId: msg.gmailMessageId,
-                    gmailThreadId: msg.gmailThreadId,
-                    rfcMessageId: msg.rfcMessageId.slice(0, 255) || null,
-                    referencesHeader: msg.references || null,
-                    sender: msg.sender.slice(0, 145),
-                    subject: msg.subject.slice(0, 255),
-                });
-                const { bodyBudget } = this.smsScaffold(msg.sender, email.email, msg.attachmentCount, saved.messageId);
-                const summary = await this.openAiService.summarize(msg.subject, msg.body, bodyBudget);
-                const sms = this.buildSms(msg.sender, summary, msg.attachmentCount, saved.messageId, email.email);
-                const senderAddr = this.extractEmailAddress(msg.sender);
-                for (const set of activeSets) {
-                    if (set.phone.optedOutAt)
+                try {
+                    const alreadySent = await this.incomeMessageRepo.findOne({
+                        where: { email: { emailId: email.emailId }, gmailMessageId: raw.id },
+                        select: { messageId: true },
+                    });
+                    if (alreadySent) {
+                        this.logger.debug(`Skipping already-delivered message ${raw.id}`);
                         continue;
-                    const filter = set.allowedSenders ?? [];
-                    if (filter.length > 0 && !filter.some((s) => s.email === senderAddr))
+                    }
+                    const msg = await this.gmailService.fetchMessage(refreshToken, raw.id);
+                    const isJunk = msg.labels.some((l) => ['CATEGORY_PROMOTIONS', 'CATEGORY_SOCIAL', 'CATEGORY_FORUMS', 'SENT', 'DRAFT'].includes(l));
+                    if (isJunk) {
+                        this.logger.debug(`Skipping message ${raw.id} (labels: ${msg.labels.join(', ')})`);
                         continue;
-                    await this.signalwireService.sendSms(set.phone.phone, sms);
+                    }
+                    const saved = await this.createIncomeMessage({
+                        email,
+                        createdAt: new Date(),
+                        gmailMessageId: msg.gmailMessageId,
+                        gmailThreadId: msg.gmailThreadId,
+                        rfcMessageId: msg.rfcMessageId.slice(0, 255) || null,
+                        referencesHeader: msg.references || null,
+                        sender: msg.sender.slice(0, 145),
+                        subject: msg.subject.slice(0, 255),
+                    });
+                    if (!saved) {
+                        this.logger.debug(`Skipping already-delivered message ${raw.id}`);
+                        continue;
+                    }
+                    const { bodyBudget } = this.smsScaffold(msg.sender, email.email, msg.attachmentCount, saved.messageId);
+                    const summary = await this.openAiService.summarize(msg.subject, msg.body, bodyBudget);
+                    const sms = this.buildSms(msg.sender, summary, msg.attachmentCount, saved.messageId, email.email);
+                    const senderAddr = this.extractEmailAddress(msg.sender);
+                    const sentTo = new Set();
+                    for (const set of activeSets) {
+                        if (set.phone.optedOutAt)
+                            continue;
+                        if (sentTo.has(set.phone.phone))
+                            continue;
+                        const filter = set.allowedSenders ?? [];
+                        if (filter.length > 0 && !filter.some((s) => s.email === senderAddr))
+                            continue;
+                        await this.signalwireService.sendSms(set.phone.phone, sms);
+                        sentTo.add(set.phone.phone);
+                    }
                 }
-            }
-            catch (err) {
-                this.logger.error(`Failed to process Gmail message ${raw.id}: ${err}`);
+                catch (err) {
+                    this.logger.error(`Failed to process Gmail message ${raw.id}: ${err}`);
+                }
             }
         }
-        email.lastHistoryId = String(newHistoryId);
-        await this.emailRepo.save(email);
+        await this.advanceHistoryId(email.emailId, newHistoryId);
+    }
+    async advanceHistoryId(emailId, newHistoryId) {
+        const current = await this.emailRepo.findOne({ where: { emailId } });
+        if (!current)
+            return;
+        if (current.lastHistoryId && BigInt(current.lastHistoryId) >= BigInt(newHistoryId))
+            return;
+        current.lastHistoryId = newHistoryId;
+        await this.emailRepo.save(current);
     }
     async handleInboundSms(from, body) {
         const normalizedFrom = from.startsWith('+') ? from.slice(1) : from;
@@ -416,6 +453,9 @@ Reply STOP to unsubscribe`);
             catch (err) {
                 if (err?.code !== 'ER_DUP_ENTRY')
                     throw err;
+                const detail = String(err?.sqlMessage ?? err?.message ?? '');
+                if (detail.includes('uq_income_message_gmail'))
+                    return null;
             }
         }
         throw new Error('Could not allocate a unique message id after 5 attempts');

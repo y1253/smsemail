@@ -52,21 +52,26 @@ let GmailService = class GmailService {
     async getNewMessages(refreshToken, startHistoryId) {
         const auth = this.getAuthClient(refreshToken);
         const gmail = googleapis_1.google.gmail({ version: 'v1', auth });
-        const res = await gmail.users.history.list({
-            userId: 'me',
-            startHistoryId,
-            historyTypes: ['messageAdded'],
-            labelId: 'INBOX',
-        });
-        const messages = [];
-        for (const record of res.data.history ?? []) {
-            for (const added of record.messagesAdded ?? []) {
-                if (added.message?.id) {
-                    messages.push(added.message);
+        const messages = new Map();
+        let pageToken;
+        do {
+            const res = await gmail.users.history.list({
+                userId: 'me',
+                startHistoryId,
+                historyTypes: ['messageAdded'],
+                labelId: 'INBOX',
+                pageToken,
+            });
+            for (const record of res.data.history ?? []) {
+                for (const added of record.messagesAdded ?? []) {
+                    if (added.message?.id && !messages.has(added.message.id)) {
+                        messages.set(added.message.id, added.message);
+                    }
                 }
             }
-        }
-        return messages;
+            pageToken = res.data.nextPageToken ?? undefined;
+        } while (pageToken);
+        return [...messages.values()];
     }
     async fetchMessage(refreshToken, messageId) {
         const auth = this.getAuthClient(refreshToken);

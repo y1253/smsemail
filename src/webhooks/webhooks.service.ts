@@ -26,6 +26,11 @@ export class WebhooksService {
   private static readonly MESSAGE_RETENTION_DAYS = 30;
   private readonly logger = new Logger(WebhooksService.name);
   private readonly stripe: Stripe;
+  // One in-flight push per mailbox. Gmail fires several notifications for a
+  // single change; run them concurrently and they all read the same stale
+  // lastHistoryId, all list the same message, and all send. Chaining them means
+  // the second one starts from a pointer the first already advanced.
+  private readonly pushChains = new Map<string, Promise<void>>();
 
   constructor(
     @InjectRepository(Email)
@@ -57,6 +62,21 @@ export class WebhooksService {
       Buffer.from(encoded, 'base64').toString('utf-8'),
     ) as { emailAddress: string; historyId: number | string };
 
+    const previous = this.pushChains.get(emailAddress) ?? Promise.resolve();
+    // .catch on the tail so one failed push doesn't poison the chain, and the
+    // map entry is dropped once this is the last link (otherwise it grows one
+    // entry per mailbox forever).
+    const current = previous
+      .catch(() => undefined)
+      .then(() => this.processGmailPush(emailAddress, String(newHistoryId)));
+    this.pushChains.set(emailAddress, current);
+    void current.catch(() => undefined).then(() => {
+      if (this.pushChains.get(emailAddress) === current) this.pushChains.delete(emailAddress);
+    });
+    return current;
+  }
+
+  private async processGmailPush(emailAddress: string, newHistoryId: string): Promise<void> {
     const email = await this.emailRepo.findOne({
       where: { email: emailAddress, deletedAt: IsNull() },
     });
@@ -69,57 +89,97 @@ export class WebhooksService {
       where: { email: { emailId: email.emailId }, deletedAt: IsNull() },
       relations: ['phone', 'allowedSenders'],
     });
-    if (!activeSets.length) return;
 
-    for (const raw of rawMessages) {
-      if (!raw.id) continue;
-      try {
-        const msg = await this.gmailService.fetchMessage(refreshToken, raw.id);
-        const isJunk = msg.labels.some((l) =>
-          ['CATEGORY_PROMOTIONS', 'CATEGORY_SOCIAL', 'CATEGORY_FORUMS', 'SENT', 'DRAFT'].includes(l),
-        );
-        if (isJunk) {
-          this.logger.debug(`Skipping message ${raw.id} (labels: ${msg.labels.join(', ')})`);
-          continue;
+    // Even with nobody to notify the pointer has to move on, or every later
+    // push re-lists this same window and keeps re-processing it.
+    if (activeSets.length) {
+      for (const raw of rawMessages) {
+        if (!raw.id) continue;
+        try {
+          // Cheap replay check: on a redelivered notification every message
+          // here is already stored, so this skips the Gmail fetch entirely.
+          // The unique index below is the race-proof authority — this is only
+          // an optimization.
+          const alreadySent = await this.incomeMessageRepo.findOne({
+            where: { email: { emailId: email.emailId }, gmailMessageId: raw.id },
+            select: { messageId: true },
+          });
+          if (alreadySent) {
+            this.logger.debug(`Skipping already-delivered message ${raw.id}`);
+            continue;
+          }
+
+          const msg = await this.gmailService.fetchMessage(refreshToken, raw.id);
+          const isJunk = msg.labels.some((l) =>
+            ['CATEGORY_PROMOTIONS', 'CATEGORY_SOCIAL', 'CATEGORY_FORUMS', 'SENT', 'DRAFT'].includes(l),
+          );
+          if (isJunk) {
+            this.logger.debug(`Skipping message ${raw.id} (labels: ${msg.labels.join(', ')})`);
+            continue;
+          }
+
+          // Insert first: the row must exist before the SMS goes out so the
+          // "R <id>" reply can find it, and the footer (and thus the exact body
+          // budget) depends on the id. It also claims the message — a null
+          // return means another delivery of this same mail already claimed it.
+          const saved = await this.createIncomeMessage({
+            email,
+            createdAt: new Date(),
+            gmailMessageId: msg.gmailMessageId,
+            gmailThreadId: msg.gmailThreadId,
+            rfcMessageId: msg.rfcMessageId.slice(0, 255) || null,
+            referencesHeader: msg.references || null,
+            sender: msg.sender.slice(0, 145),
+            subject: msg.subject.slice(0, 255),
+          });
+          if (!saved) {
+            this.logger.debug(`Skipping already-delivered message ${raw.id}`);
+            continue;
+          }
+
+          const { bodyBudget } = this.smsScaffold(
+            msg.sender,
+            email.email,
+            msg.attachmentCount,
+            saved.messageId,
+          );
+          const summary = await this.openAiService.summarize(msg.subject, msg.body, bodyBudget);
+
+          const sms = this.buildSms(msg.sender, summary, msg.attachmentCount, saved.messageId, email.email);
+          const senderAddr = this.extractEmailAddress(msg.sender);
+          // Nothing in the DB stops two active sets from carrying the same
+          // number (uniqueness is only enforced in app code), and that would be
+          // two identical texts with the same "R <id>".
+          const sentTo = new Set<string>();
+          for (const set of activeSets) {
+            if (set.phone.optedOutAt) continue; // number replied STOP — honor opt-out
+            if (sentTo.has(set.phone.phone)) continue;
+            const filter = set.allowedSenders ?? [];
+            if (filter.length > 0 && !filter.some((s) => s.email === senderAddr)) continue;
+            await this.signalwireService.sendSms(set.phone.phone, sms);
+            sentTo.add(set.phone.phone);
+          }
+        } catch (err) {
+          this.logger.error(`Failed to process Gmail message ${raw.id}: ${err}`);
         }
-
-        // Insert first: the row must exist before the SMS goes out so the
-        // "R <id>" reply can find it, and the footer (and thus the exact body
-        // budget) depends on the id.
-        const saved = await this.createIncomeMessage({
-          email,
-          createdAt: new Date(),
-          gmailMessageId: msg.gmailMessageId,
-          gmailThreadId: msg.gmailThreadId,
-          rfcMessageId: msg.rfcMessageId.slice(0, 255) || null,
-          referencesHeader: msg.references || null,
-          sender: msg.sender.slice(0, 145),
-          subject: msg.subject.slice(0, 255),
-        });
-
-        const { bodyBudget } = this.smsScaffold(
-          msg.sender,
-          email.email,
-          msg.attachmentCount,
-          saved.messageId,
-        );
-        const summary = await this.openAiService.summarize(msg.subject, msg.body, bodyBudget);
-
-        const sms = this.buildSms(msg.sender, summary, msg.attachmentCount, saved.messageId, email.email);
-        const senderAddr = this.extractEmailAddress(msg.sender);
-        for (const set of activeSets) {
-          if (set.phone.optedOutAt) continue; // number replied STOP — honor opt-out
-          const filter = set.allowedSenders ?? [];
-          if (filter.length > 0 && !filter.some((s) => s.email === senderAddr)) continue;
-          await this.signalwireService.sendSms(set.phone.phone, sms);
-        }
-      } catch (err) {
-        this.logger.error(`Failed to process Gmail message ${raw.id}: ${err}`);
       }
     }
 
-    email.lastHistoryId = String(newHistoryId);
-    await this.emailRepo.save(email);
+    await this.advanceHistoryId(email.emailId, newHistoryId);
+  }
+
+  // Forward-only. Notifications can finish out of order, and writing this
+  // push's id unconditionally would rewind the pointer behind a push that
+  // already completed — making the next notification re-list, and re-send,
+  // mail that was already delivered. Re-read rather than reusing the entity
+  // loaded at the top, which by now may be stale. Compared as BigInt because
+  // last_history_id is a varchar and "10" < "9" as a string.
+  private async advanceHistoryId(emailId: number, newHistoryId: string): Promise<void> {
+    const current = await this.emailRepo.findOne({ where: { emailId } });
+    if (!current) return;
+    if (current.lastHistoryId && BigInt(current.lastHistoryId) >= BigInt(newHistoryId)) return;
+    current.lastHistoryId = newHistoryId;
+    await this.emailRepo.save(current);
   }
 
   async handleInboundSms(from: string, body: string): Promise<void> {
@@ -481,7 +541,11 @@ Reply STOP to unsubscribe`,
   // Assigns a random id rather than letting MySQL auto-increment, so the
   // number a user sees in their SMS doesn't reveal the message count. The id
   // space is finite, so retry on the (rare) primary-key collision.
-  private async createIncomeMessage(data: Partial<IncomeMessage>): Promise<IncomeMessage> {
+  //
+  // Doubles as the delivery lock: returns null when uq_income_message_gmail
+  // rejects the row, meaning this Gmail message was already stored (and texted)
+  // by another delivery of the same notification. The caller must then skip.
+  private async createIncomeMessage(data: Partial<IncomeMessage>): Promise<IncomeMessage | null> {
     for (let attempt = 0; attempt < 5; attempt++) {
       const record = this.incomeMessageRepo.create({ ...data, messageId: randomMessageId() });
       try {
@@ -492,6 +556,9 @@ Reply STOP to unsubscribe`,
         return record;
       } catch (err: any) {
         if (err?.code !== 'ER_DUP_ENTRY') throw err;
+        // Duplicate mail, not a duplicate id — a fresh random id won't help.
+        const detail = String(err?.sqlMessage ?? err?.message ?? '');
+        if (detail.includes('uq_income_message_gmail')) return null;
       }
     }
     // Means the table has outgrown the id space — shorten MESSAGE_RETENTION_DAYS.

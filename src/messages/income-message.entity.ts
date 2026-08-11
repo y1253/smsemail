@@ -8,6 +8,11 @@ import {
 } from 'typeorm';
 import { Email } from '../emails/email.entity';
 
+// The same Gmail message reaches us many times over: Pub/Sub push is
+// at-least-once, and Gmail emits several notifications per change. This index
+// is what makes processing idempotent — the insert IS the dedup, so a replay
+// can never turn into a second SMS.
+@Index('uq_income_message_gmail', ['email', 'gmailMessageId'], { unique: true })
 @Entity('income_message')
 export class IncomeMessage {
   @PrimaryGeneratedColumn({ name: 'message_id' })

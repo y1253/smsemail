@@ -62,22 +62,34 @@ export class GmailService {
     const auth = this.getAuthClient(refreshToken);
     const gmail = google.gmail({ version: 'v1', auth });
 
-    const res = await gmail.users.history.list({
-      userId: 'me',
-      startHistoryId,
-      historyTypes: ['messageAdded'],
-      labelId: 'INBOX',
-    });
+    // Keyed by message id, not an array: Gmail may repeat the same message
+    // across several history records (and across pages), and every repeat here
+    // would become another text message for the same mail.
+    const messages = new Map<string, gmail_v1.Schema$Message>();
+    let pageToken: string | undefined;
 
-    const messages: gmail_v1.Schema$Message[] = [];
-    for (const record of res.data.history ?? []) {
-      for (const added of record.messagesAdded ?? []) {
-        if (added.message?.id) {
-          messages.push(added.message);
+    do {
+      const res = await gmail.users.history.list({
+        userId: 'me',
+        startHistoryId,
+        historyTypes: ['messageAdded'],
+        labelId: 'INBOX',
+        pageToken,
+      });
+
+      for (const record of res.data.history ?? []) {
+        for (const added of record.messagesAdded ?? []) {
+          if (added.message?.id && !messages.has(added.message.id)) {
+            messages.set(added.message.id, added.message);
+          }
         }
       }
-    }
-    return messages;
+      // Without following nextPageToken, a burst of mail silently loses
+      // everything past the first page.
+      pageToken = res.data.nextPageToken ?? undefined;
+    } while (pageToken);
+
+    return [...messages.values()];
   }
 
   async fetchMessage(

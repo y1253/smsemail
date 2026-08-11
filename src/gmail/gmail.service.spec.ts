@@ -1,11 +1,12 @@
 import { GmailService } from './gmail.service';
 
 const send = jest.fn().mockResolvedValue({ data: {} });
+const historyList = jest.fn().mockResolvedValue({ data: {} });
 
 jest.mock('googleapis', () => ({
   google: {
     auth: { OAuth2: jest.fn().mockImplementation(() => ({ setCredentials: jest.fn() })) },
-    gmail: () => ({ users: { messages: { send } } }),
+    gmail: () => ({ users: { messages: { send }, history: { list: historyList } } }),
   },
 }));
 
@@ -122,5 +123,51 @@ describe('GmailService.sendEmail', () => {
       'Content-Type: text/plain; charset=utf-8',
     ]);
     expect(send.mock.calls[0][0].requestBody.threadId).toBeUndefined();
+  });
+});
+
+describe('GmailService.getNewMessages', () => {
+  beforeEach(() => historyList.mockReset());
+
+  it('returns a message once when it appears in several history records', async () => {
+    historyList.mockResolvedValue({
+      data: {
+        history: [
+          { messagesAdded: [{ message: { id: 'm1', threadId: 't1' } }] },
+          { messagesAdded: [{ message: { id: 'm1', threadId: 't1' } }] },
+        ],
+      },
+    });
+
+    const messages = await makeService().getNewMessages('tok', '100');
+
+    expect(messages.map((m) => m.id)).toEqual(['m1']);
+  });
+
+  it('follows nextPageToken and dedupes across pages', async () => {
+    historyList
+      .mockResolvedValueOnce({
+        data: {
+          history: [{ messagesAdded: [{ message: { id: 'm1' } }, { message: { id: 'm2' } }] }],
+          nextPageToken: 'page-2',
+        },
+      })
+      .mockResolvedValueOnce({
+        data: { history: [{ messagesAdded: [{ message: { id: 'm2' } }, { message: { id: 'm3' } }] }] },
+      });
+
+    const messages = await makeService().getNewMessages('tok', '100');
+
+    expect(messages.map((m) => m.id)).toEqual(['m1', 'm2', 'm3']);
+    expect(historyList).toHaveBeenCalledTimes(2);
+    expect(historyList.mock.calls[0][0].pageToken).toBeUndefined();
+    expect(historyList.mock.calls[1][0].pageToken).toBe('page-2');
+  });
+
+  it('stops after one page when there is no nextPageToken', async () => {
+    historyList.mockResolvedValue({ data: { history: [] } });
+
+    await expect(makeService().getNewMessages('tok', '100')).resolves.toEqual([]);
+    expect(historyList).toHaveBeenCalledTimes(1);
   });
 });

@@ -24,8 +24,11 @@ export declare class WebhooksService {
     private static readonly MESSAGE_RETENTION_DAYS;
     private readonly logger;
     private readonly stripe;
+    private readonly pushChains;
     constructor(emailRepo: Repository<Email>, phoneRepo: Repository<Phone>, setRepo: Repository<EmailPhoneSet>, incomeMessageRepo: Repository<IncomeMessage>, pendingRepo: Repository<PendingSmsCommand>, config: ConfigService, emailsService: EmailsService, gmailService: GmailService, openAiService: OpenAiService, signalwireService: SignalwireService);
     handleGmailPush(payload: Record<string, any>): Promise<void>;
+    private processGmailPush;
+    private advanceHistoryId;
     handleInboundSms(from: string, body: string): Promise<void>;
     private parseSendCommand;
     private replyToMessage;

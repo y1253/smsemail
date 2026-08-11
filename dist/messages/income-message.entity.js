@@ -63,6 +63,7 @@ __decorate([
     __metadata("design:type", Object)
 ], IncomeMessage.prototype, "referencesHeader", void 0);
 exports.IncomeMessage = IncomeMessage = __decorate([
+    (0, typeorm_1.Index)('uq_income_message_gmail', ['email', 'gmailMessageId'], { unique: true }),
     (0, typeorm_1.Entity)('income_message')
 ], IncomeMessage);
 //# sourceMappingURL=income-message.entity.js.map
