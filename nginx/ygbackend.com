@@ -1,6 +1,6 @@
 server {
     listen 80;
-    server_name ygbackend.com;
+    server_name ygbackend.com emailontext.com;
 
     root /var/www/html;
     location /.well-known/acme-challenge/ { try_files $uri =404; }
@@ -9,7 +9,7 @@ server {
 
 server {
     listen 443 ssl;
-    server_name ygbackend.com;
+    server_name ygbackend.com emailontext.com;
 
     ssl_certificate     /etc/letsencrypt/live/ygbackend.com/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/ygbackend.com/privkey.pem;
@@ -36,7 +36,7 @@ server {
     }
 
     # Backend API
-    location ~ ^/(users|emails|phones|sets|cc|webhooks|trypayment)(/.*)?$ {
+    location ~ ^/(users|emails|phones|sets|cc|webhooks|trypayment|pricing)(/.*)?$ {
         proxy_pass         http://127.0.0.1:3000;
         proxy_http_version 1.1;
         proxy_set_header   Host              $host;
