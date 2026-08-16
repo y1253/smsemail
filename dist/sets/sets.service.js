@@ -195,7 +195,7 @@ let SetsService = SetsService_1 = class SetsService {
                 existing.stripeSubscriptionId = subscriptionId;
                 await this.setRepo.save(existing);
                 await this.refreshGmailWatch(email);
-                await this.signalwireService.sendSms(phone.phone, "SMSMail: You're subscribed to email-to-SMS alerts. Msg frequency varies. Msg & data rates may apply. Reply HELP for help, STOP to unsubscribe.");
+                await this.signalwireService.sendSms(phone.phone, "EmailOnText: You're subscribed to email-to-SMS alerts. Msg frequency varies. Msg & data rates may apply. Reply HELP for help, STOP to unsubscribe.");
                 return { setId: existing.setId };
             }
             if (!promoValid) {

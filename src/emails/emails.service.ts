@@ -81,7 +81,7 @@ export class EmailsService {
     const grantedScopes = (tokens.scope ?? '').split(' ');
     if (!hasRequiredGmailScopes(grantedScopes)) {
       throw new ForbiddenException(
-        "SMSMail needs permission to both read and send your Gmail. On Google's consent screen, please check both Gmail boxes, then try again.",
+        "EmailOnText needs permission to both read and send your Gmail. On Google's consent screen, please check both Gmail boxes, then try again.",
       );
     }
 
@@ -153,7 +153,7 @@ export class EmailsService {
         this.logger.error(`Failed to revoke Google access for ${emailFromGoogle}: ${revokeErr}`);
       }
       throw new ForbiddenException(
-        "SMSMail couldn't access your Gmail. On Google's consent screen, please check the box granting access to Gmail, then try again.",
+        "EmailOnText couldn't access your Gmail. On Google's consent screen, please check the box granting access to Gmail, then try again.",
       );
     }
 

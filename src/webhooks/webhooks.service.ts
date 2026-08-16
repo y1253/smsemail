@@ -202,7 +202,7 @@ export class WebhooksService {
       }
       await this.signalwireService.sendSms(
         from,
-        "SMSMail: You're unsubscribed and will get no more messages. Reply START to resubscribe.",
+        "EmailOnText: You're unsubscribed and will get no more messages. Reply START to resubscribe.",
       );
       return;
     }
@@ -213,14 +213,14 @@ export class WebhooksService {
       }
       await this.signalwireService.sendSms(
         from,
-        "SMSMail: You're resubscribed to SMSMail alerts. Reply HELP for help, STOP to unsubscribe.",
+        "EmailOnText: You're resubscribed to EmailOnText alerts. Reply HELP for help, STOP to unsubscribe.",
       );
       return;
     }
     if (keyword === 'HELP') {
       await this.signalwireService.sendSms(
         from,
-        `SMSMail email-to-SMS
+        `EmailOnText email-to-SMS
 
 Reply to last email:
 R your message here

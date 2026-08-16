@@ -104,7 +104,7 @@ let EmailsService = EmailsService_1 = class EmailsService {
         }
         const grantedScopes = (tokens.scope ?? '').split(' ');
         if (!hasRequiredGmailScopes(grantedScopes)) {
-            throw new common_1.ForbiddenException("SMSMail needs permission to both read and send your Gmail. On Google's consent screen, please check both Gmail boxes, then try again.");
+            throw new common_1.ForbiddenException("EmailOnText needs permission to both read and send your Gmail. On Google's consent screen, please check both Gmail boxes, then try again.");
         }
         const idToken = tokens.id_token;
         if (!idToken) {
@@ -162,7 +162,7 @@ let EmailsService = EmailsService_1 = class EmailsService {
             catch (revokeErr) {
                 this.logger.error(`Failed to revoke Google access for ${emailFromGoogle}: ${revokeErr}`);
             }
-            throw new common_1.ForbiddenException("SMSMail couldn't access your Gmail. On Google's consent screen, please check the box granting access to Gmail, then try again.");
+            throw new common_1.ForbiddenException("EmailOnText couldn't access your Gmail. On Google's consent screen, please check the box granting access to Gmail, then try again.");
         }
         email.lastHistoryId = historyId;
         email.watchExpiry = expiry;
