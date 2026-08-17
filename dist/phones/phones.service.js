@@ -15,6 +15,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.PhonesService = void 0;
 const common_1 = require("@nestjs/common");
 const typeorm_1 = require("@nestjs/typeorm");
+const node_crypto_1 = require("node:crypto");
 const typeorm_2 = require("typeorm");
 const user_entity_1 = require("../users/user.entity");
 const phone_entity_1 = require("./phone.entity");
@@ -129,10 +130,9 @@ let PhonesService = class PhonesService {
         return { deleted: true, phoneId: phone.phoneId };
     }
     generateCode() {
-        const digits = '0123456789';
         let code = '';
         for (let i = 0; i < CODE_LENGTH; i++) {
-            code += digits[Math.floor(Math.random() * digits.length)];
+            code += String((0, node_crypto_1.randomInt)(0, 10));
         }
         return code;
     }

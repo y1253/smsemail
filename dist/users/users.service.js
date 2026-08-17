@@ -44,6 +44,7 @@ var __metadata = (this && this.__metadata) || function (k, v) {
 var __param = (this && this.__param) || function (paramIndex, decorator) {
     return function (target, key) { decorator(target, key, paramIndex); }
 };
+var UsersService_1;
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.UsersService = void 0;
 const common_1 = require("@nestjs/common");
@@ -54,6 +55,7 @@ const jwt_1 = require("@nestjs/jwt");
 const google_auth_library_1 = require("google-auth-library");
 const bcrypt = __importStar(require("bcrypt"));
 let UsersService = class UsersService {
+    static { UsersService_1 = this; }
     userRepo;
     jwtService;
     googleClient;
@@ -88,12 +90,12 @@ let UsersService = class UsersService {
         const { userId } = await this.userRepo.save(account);
         return this.jwtService.signAsync({ user_id: userId, email });
     }
+    static DUMMY_HASH = '$2b$10$zJQZuvQszFCsN5HCNHJZnOoSY3Ez0l3YKgzitZRSUJHS89Gnx5MaO';
     async login(user) {
         const savedUser = await this.getUserByEmail(user.email);
-        if (!savedUser) {
-            throw new common_1.UnauthorizedException('Invalid password or email');
-        }
-        if (!savedUser.password || !(await bcrypt.compare(user.password, savedUser.password))) {
+        const hash = savedUser?.password || UsersService_1.DUMMY_HASH;
+        const passwordOk = await bcrypt.compare(user.password, hash);
+        if (!savedUser || !savedUser.password || !passwordOk) {
             throw new common_1.UnauthorizedException('Invalid password or email');
         }
         return await this.createToken({
@@ -159,7 +161,7 @@ let UsersService = class UsersService {
     }
 };
 exports.UsersService = UsersService;
-exports.UsersService = UsersService = __decorate([
+exports.UsersService = UsersService = UsersService_1 = __decorate([
     (0, common_1.Injectable)(),
     __param(0, (0, typeorm_1.InjectRepository)(user_entity_1.User)),
     __param(2, (0, common_1.Inject)('GOOGLE_CLIENT')),

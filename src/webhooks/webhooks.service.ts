@@ -327,8 +327,13 @@ Reply STOP to unsubscribe`,
         await this.signalwireService.sendSms(from, 'Unknown command. Use R to reply, S to send, or HELP for instructions.');
       }
     } catch (err) {
+      // Log details server-side, but never return raw internal error text to the
+      // (untrusted) SMS sender — it was an information-disclosure oracle.
       this.logger.error(`Inbound SMS error from ${from}: ${err}`);
-      await this.signalwireService.sendSms(from, `Error: ${(err as Error).message}`);
+      await this.signalwireService.sendSms(
+        from,
+        'Sorry, something went wrong processing your message. Please try again.',
+      );
     }
   }
 

@@ -10,6 +10,7 @@ import { EmailsModule } from '../emails/emails.module';
 import { GmailModule } from '../gmail/gmail.module';
 import { OpenAiModule } from '../openai/openai.module';
 import { WebhooksService } from './webhooks.service';
+import { WebhookSecurityService } from './webhook-security.service';
 import { WebhooksController } from './webhooks.controller';
 
 @Module({
@@ -20,6 +21,6 @@ import { WebhooksController } from './webhooks.controller';
     OpenAiModule,
   ],
   controllers: [WebhooksController],
-  providers: [WebhooksService],
+  providers: [WebhooksService, WebhookSecurityService],
 })
 export class WebhooksModule {}

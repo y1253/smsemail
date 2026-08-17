@@ -292,7 +292,7 @@ Reply STOP to unsubscribe`);
         }
         catch (err) {
             this.logger.error(`Inbound SMS error from ${from}: ${err}`);
-            await this.signalwireService.sendSms(from, `Error: ${err.message}`);
+            await this.signalwireService.sendSms(from, 'Sorry, something went wrong processing your message. Please try again.');
         }
     }
     parseSendCommand(trimmed) {

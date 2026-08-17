@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { google, gmail_v1 } from 'googleapis';
 import { convert } from 'html-to-text';
@@ -249,6 +249,12 @@ export class GmailService {
     return ids.join(' ');
   }
 
+  // Strip CR/LF so a crafted To/Subject can't inject extra MIME headers
+  // (e.g. "Bcc: mass@list") — CRLF / email-header injection (CWE-93).
+  private sanitizeHeader(value: string): string {
+    return value.replace(/[\r\n]+/g, ' ').trim();
+  }
+
   private buildRaw(
     from: string,
     to: string,
@@ -256,11 +262,20 @@ export class GmailService {
     body: string,
     opts?: { inReplyTo?: string | null; references?: string | null },
   ): string {
+    const safeFrom = this.sanitizeHeader(from);
+    const safeTo = this.sanitizeHeader(to);
+    const safeSubject = this.sanitizeHeader(subject);
+
+    // Reject anything that isn't a single well-formed address.
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(safeTo)) {
+      throw new BadRequestException('Invalid recipient email address');
+    }
+
     const inReplyTo = opts?.inReplyTo?.trim();
     const lines = [
-      `From: ${from}`,
-      `To: ${to}`,
-      ...(subject ? [`Subject: ${subject}`] : []),
+      `From: ${safeFrom}`,
+      `To: ${safeTo}`,
+      ...(safeSubject ? [`Subject: ${safeSubject}`] : []),
       ...(inReplyTo
         ? [
             `In-Reply-To: ${inReplyTo}`,

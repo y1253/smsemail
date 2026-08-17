@@ -14,60 +14,47 @@ var __param = (this && this.__param) || function (paramIndex, decorator) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.AdminController = void 0;
 const common_1 = require("@nestjs/common");
-const config_1 = require("@nestjs/config");
 const admin_service_1 = require("./admin.service");
+const auth_guard_1 = require("../auth/auth.guard");
+const admin_guard_1 = require("../auth/admin.guard");
 let AdminController = class AdminController {
     adminService;
-    config;
-    constructor(adminService, config) {
+    constructor(adminService) {
         this.adminService = adminService;
-        this.config = config;
     }
-    assertAdmin(password) {
-        const adminPassword = this.config.get('ADMIN_PASSWORD');
-        if (!adminPassword || password !== adminPassword) {
-            throw new common_1.UnauthorizedException('Invalid admin password');
-        }
-    }
-    async getAccounts(password) {
-        this.assertAdmin(password);
+    async getAccounts() {
         return this.adminService.getAllAccounts();
     }
-    async getDeleted(password) {
-        this.assertAdmin(password);
+    async getDeleted() {
         return this.adminService.getDeletedContacts();
     }
-    async getAccount(password, userId) {
-        this.assertAdmin(password);
+    async getAccount(userId) {
         return this.adminService.getAccountDetail(userId);
     }
 };
 exports.AdminController = AdminController;
 __decorate([
     (0, common_1.Get)('accounts'),
-    __param(0, (0, common_1.Headers)('x-admin-password')),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [String]),
+    __metadata("design:paramtypes", []),
     __metadata("design:returntype", Promise)
 ], AdminController.prototype, "getAccounts", null);
 __decorate([
     (0, common_1.Get)('deleted'),
-    __param(0, (0, common_1.Headers)('x-admin-password')),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [String]),
+    __metadata("design:paramtypes", []),
     __metadata("design:returntype", Promise)
 ], AdminController.prototype, "getDeleted", null);
 __decorate([
     (0, common_1.Get)('accounts/:userId'),
-    __param(0, (0, common_1.Headers)('x-admin-password')),
-    __param(1, (0, common_1.Param)('userId', common_1.ParseIntPipe)),
+    __param(0, (0, common_1.Param)('userId', common_1.ParseIntPipe)),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [String, Number]),
+    __metadata("design:paramtypes", [Number]),
     __metadata("design:returntype", Promise)
 ], AdminController.prototype, "getAccount", null);
 exports.AdminController = AdminController = __decorate([
     (0, common_1.Controller)('admin'),
-    __metadata("design:paramtypes", [admin_service_1.AdminService,
-        config_1.ConfigService])
+    (0, common_1.UseGuards)(auth_guard_1.AuthGuard, admin_guard_1.AdminGuard),
+    __metadata("design:paramtypes", [admin_service_1.AdminService])
 ], AdminController);
 //# sourceMappingURL=admin.controller.js.map

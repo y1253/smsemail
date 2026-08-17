@@ -9,6 +9,7 @@ export declare class UsersService {
     constructor(userRepo: Repository<User>, jwtService: JwtService, googleClient: OAuth2Client);
     getProfile(userId: number): Promise<User>;
     createNewUser(newUser: any): Promise<string>;
+    private static readonly DUMMY_HASH;
     login(user: {
         email: string;
         password: string;

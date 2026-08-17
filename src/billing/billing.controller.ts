@@ -11,7 +11,7 @@ type JwtPayload = {
 
 /**
  * Deliberately mounted under `/cc`, not `/billing`. nginx only proxies
- * `^/(users|emails|phones|sets|cc|webhooks|trypayment)` to this server
+ * `^/(users|emails|phones|sets|cc|webhooks|pricing)` to this server
  * (see server/nginx/ygbackend.com) — anything else falls through to the SPA and
  * returns index.html with a 200. Do not "fix" this prefix without updating nginx.
  */

@@ -17,6 +17,7 @@ const common_1 = require("@nestjs/common");
 const phones_service_1 = require("./phones.service");
 const auth_guard_1 = require("../auth/auth.guard");
 const current_user_decorator_1 = require("../auth/current-user.decorator");
+const rate_limit_guard_1 = require("../common/rate-limit.guard");
 const add_phone_dto_1 = require("./dto/add-phone.dto");
 const verify_phone_dto_1 = require("./dto/verify-phone.dto");
 const delete_phone_dto_1 = require("./dto/delete-phone.dto");
@@ -50,6 +51,7 @@ __decorate([
 __decorate([
     (0, common_1.Post)(),
     (0, common_1.UseGuards)(auth_guard_1.AuthGuard),
+    (0, rate_limit_guard_1.RateLimit)({ limit: 5, windowMs: 60_000 }),
     __param(0, (0, common_1.Body)()),
     __param(1, (0, current_user_decorator_1.CurrentUser)()),
     __metadata("design:type", Function),
@@ -59,6 +61,7 @@ __decorate([
 __decorate([
     (0, common_1.Post)('verify'),
     (0, common_1.UseGuards)(auth_guard_1.AuthGuard),
+    (0, rate_limit_guard_1.RateLimit)({ limit: 5, windowMs: 60_000 }),
     __param(0, (0, common_1.Body)()),
     __param(1, (0, current_user_decorator_1.CurrentUser)()),
     __metadata("design:type", Function),

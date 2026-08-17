@@ -16,9 +16,27 @@ import { AuthModule } from '../auth/auth.module';
       global: true,
       imports: [ConfigModule],
       inject: [ConfigService],
-      useFactory: (config: ConfigService) => ({
-        secret: config.get<string>('JWT_SECRET') ?? 'changeme',
-      }),
+      useFactory: (config: ConfigService) => {
+        const secret = config.get<string>('JWT_SECRET');
+        if (!secret) {
+          // Defence in depth: validateEnv already blocks boot without this,
+          // but never fall back to a hardcoded secret.
+          throw new Error('JWT_SECRET is not set');
+        }
+        return {
+          secret,
+          signOptions: {
+            expiresIn: '24h',
+            issuer: 'emailontext',
+            audience: 'emailontext-app',
+          },
+          verifyOptions: {
+            algorithms: ['HS256'],
+            issuer: 'emailontext',
+            audience: 'emailontext-app',
+          },
+        };
+      },
     }),
   ],
   controllers: [UsersController],

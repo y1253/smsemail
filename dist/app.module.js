@@ -8,9 +8,11 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.AppModule = void 0;
 const common_1 = require("@nestjs/common");
+const core_1 = require("@nestjs/core");
 const schedule_1 = require("@nestjs/schedule");
 const app_controller_1 = require("./app.controller");
 const app_service_1 = require("./app.service");
+const rate_limit_guard_1 = require("./common/rate-limit.guard");
 const db_config_module_1 = require("./db-config/db-config.module");
 const config_1 = require("@nestjs/config");
 const users_module_1 = require("./users/users.module");
@@ -24,14 +26,15 @@ const webhooks_module_1 = require("./webhooks/webhooks.module");
 const openai_module_1 = require("./openai/openai.module");
 const admin_module_1 = require("./admin/admin.module");
 const pricing_module_1 = require("./pricing/pricing.module");
+const env_validation_1 = require("./common/env.validation");
 let AppModule = class AppModule {
 };
 exports.AppModule = AppModule;
 exports.AppModule = AppModule = __decorate([
     (0, common_1.Module)({
         imports: [
+            config_1.ConfigModule.forRoot({ isGlobal: true, validate: env_validation_1.validateEnv }),
             db_config_module_1.DbConfigModule,
-            config_1.ConfigModule.forRoot({ isGlobal: true }),
             schedule_1.ScheduleModule.forRoot(),
             signalwire_module_1.SignalwireModule,
             users_module_1.UsersModule,
@@ -46,7 +49,10 @@ exports.AppModule = AppModule = __decorate([
             pricing_module_1.PricingModule,
         ],
         controllers: [app_controller_1.AppController],
-        providers: [app_service_1.AppService],
+        providers: [
+            app_service_1.AppService,
+            { provide: core_1.APP_GUARD, useClass: rate_limit_guard_1.RateLimitGuard },
+        ],
     })
 ], AppModule);
 //# sourceMappingURL=app.module.js.map

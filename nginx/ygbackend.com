@@ -9,7 +9,11 @@ server {
 
 server {
     listen 443 ssl;
+    http2 on;
     server_name ygbackend.com emailontext.com;
+
+    # Don't leak the nginx version.
+    server_tokens off;
 
     ssl_certificate     /etc/letsencrypt/live/ygbackend.com/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/ygbackend.com/privkey.pem;
@@ -18,6 +22,19 @@ server {
     ssl_protocols       TLSv1.2 TLSv1.3;
     ssl_ciphers         HIGH:!aNULL:!MD5;
     ssl_prefer_server_ciphers on;
+
+    # ── Security headers (CASA / OWASP ASVS). `always` so they are sent on error
+    # responses too, which the DAST scanner checks. ─────────────────────────────
+    add_header Strict-Transport-Security "max-age=63072000; includeSubDomains; preload" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-Frame-Options "DENY" always;
+    add_header Referrer-Policy "no-referrer" always;
+    add_header Permissions-Policy "camera=(), microphone=(), geolocation=()" always;
+    add_header Cross-Origin-Resource-Policy "same-origin" always;
+    # CSP: self-only by default. Stripe needs its js + frame for card input;
+    # connect-src allows the API + Stripe. No unsafe-eval. Tighten further if the
+    # client bundle allows removing 'unsafe-inline' from style-src.
+    add_header Content-Security-Policy "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; script-src 'self' https://js.stripe.com; frame-src https://js.stripe.com https://hooks.stripe.com; connect-src 'self' https://api.stripe.com; img-src 'self' data:; style-src 'self' 'unsafe-inline'; font-src 'self' data:" always;
 
     root  /root/sms-email-gui/dist;
     index index.html;
@@ -36,7 +53,7 @@ server {
     }
 
     # Backend API
-    location ~ ^/(users|emails|phones|sets|cc|webhooks|trypayment|pricing)(/.*)?$ {
+    location ~ ^/(users|emails|phones|sets|cc|webhooks|pricing)(/.*)?$ {
         proxy_pass         http://127.0.0.1:3000;
         proxy_http_version 1.1;
         proxy_set_header   Host              $host;

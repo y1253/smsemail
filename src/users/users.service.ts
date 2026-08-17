@@ -63,13 +63,19 @@ export class UsersService {
     return this.jwtService.signAsync({ user_id: userId, email });
   }
 
+  // A valid bcrypt hash of a random string, used to equalise timing when the
+  // account (or its password) doesn't exist — avoids a login-timing oracle that
+  // reveals whether an email is registered (ASVS 2.2.2).
+  private static readonly DUMMY_HASH =
+    '$2b$10$zJQZuvQszFCsN5HCNHJZnOoSY3Ez0l3YKgzitZRSUJHS89Gnx5MaO';
+
   async login(user: { email: string; password: string }) {
     const savedUser = await this.getUserByEmail(user.email);
-    if (!savedUser) {
-      throw new UnauthorizedException('Invalid password or email');
-    }
 
-    if (!savedUser.password || !(await bcrypt.compare(user.password, savedUser.password))) {
+    const hash = savedUser?.password || UsersService.DUMMY_HASH;
+    const passwordOk = await bcrypt.compare(user.password, hash);
+
+    if (!savedUser || !savedUser.password || !passwordOk) {
       throw new UnauthorizedException('Invalid password or email');
     }
 

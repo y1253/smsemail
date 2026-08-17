@@ -19,6 +19,7 @@ const emails_module_1 = require("../emails/emails.module");
 const gmail_module_1 = require("../gmail/gmail.module");
 const openai_module_1 = require("../openai/openai.module");
 const webhooks_service_1 = require("./webhooks.service");
+const webhook_security_service_1 = require("./webhook-security.service");
 const webhooks_controller_1 = require("./webhooks.controller");
 let WebhooksModule = class WebhooksModule {
 };
@@ -32,7 +33,7 @@ exports.WebhooksModule = WebhooksModule = __decorate([
             openai_module_1.OpenAiModule,
         ],
         controllers: [webhooks_controller_1.WebhooksController],
-        providers: [webhooks_service_1.WebhooksService],
+        providers: [webhooks_service_1.WebhooksService, webhook_security_service_1.WebhookSecurityService],
     })
 ], WebhooksModule);
 //# sourceMappingURL=webhooks.module.js.map

@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
 
@@ -18,17 +19,22 @@ import { DeletedPhone } from '../phones/deleted-phone.entity';
 
 @Module({
   imports: [
-    TypeOrmModule.forRoot({
-      type: 'mysql',
-      driver: require('mysql2'),
-      host: 'localhost',
-      port: 3306,
-      username: 'yg',
-      password: '12345',
-      database: 'smsemail',
-      synchronize: true,
-      entities: [User, Email, Phone, PhoneVerification, Transaction, Subscription, IncomeMessage, OutMessage, EmailPhoneSet, SetAllowedSender, PendingSmsCommand, DeletedEmail, DeletedPhone],
-
+    TypeOrmModule.forRootAsync({
+      imports: [ConfigModule],
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => ({
+        type: 'mysql',
+        driver: require('mysql2'),
+        host: config.get<string>('DB_HOST'),
+        port: Number(config.get<string>('DB_PORT') ?? 3306),
+        username: config.get<string>('DB_USER'),
+        password: config.get<string>('DB_PASSWORD'),
+        database: config.get<string>('DB_NAME'),
+        // Never let the app mutate the live schema on boot. Schema changes go
+        // through migrations (npm run migration:run) instead.
+        synchronize: false,
+        entities: [User, Email, Phone, PhoneVerification, Transaction, Subscription, IncomeMessage, OutMessage, EmailPhoneSet, SetAllowedSender, PendingSmsCommand, DeletedEmail, DeletedPhone],
+      }),
     }),
   ],
   exports: [TypeOrmModule],

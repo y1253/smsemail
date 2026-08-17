@@ -1,11 +1,8 @@
-import { ConfigService } from '@nestjs/config';
 import { AdminService } from './admin.service';
 export declare class AdminController {
     private readonly adminService;
-    private readonly config;
-    constructor(adminService: AdminService, config: ConfigService);
-    private assertAdmin;
-    getAccounts(password: string): Promise<{
+    constructor(adminService: AdminService);
+    getAccounts(): Promise<{
         userId: number;
         name: string;
         email: string | null;
@@ -21,7 +18,7 @@ export declare class AdminController {
         emails: string[];
         phones: string[];
     }[]>;
-    getDeleted(password: string): Promise<{
+    getDeleted(): Promise<{
         emails: {
             userId: number;
             value: string;
@@ -37,7 +34,7 @@ export declare class AdminController {
             deletedAt: Date;
         }[];
     }>;
-    getAccount(password: string, userId: number): Promise<{
+    getAccount(userId: number): Promise<{
         userId: number;
         name: string;
         email: string | null;

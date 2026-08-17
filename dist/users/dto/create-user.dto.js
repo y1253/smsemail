@@ -37,8 +37,8 @@ __decorate([
 ], CreateUserDto.prototype, "email", void 0);
 __decorate([
     (0, class_validator_1.IsString)(),
-    (0, class_validator_1.MinLength)(6, { message: 'Password must be at least 6 characters' }),
-    (0, class_validator_1.MaxLength)(45),
+    (0, class_validator_1.MinLength)(12, { message: 'Password must be at least 12 characters' }),
+    (0, class_validator_1.MaxLength)(72),
     __metadata("design:type", String)
 ], CreateUserDto.prototype, "password", void 0);
 __decorate([

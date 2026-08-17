@@ -1,5 +1,6 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+import { randomInt } from 'node:crypto';
 import { Repository, IsNull } from 'typeorm';
 import { User } from '../users/user.entity';
 import { Phone } from './phone.entity';
@@ -159,10 +160,12 @@ export class PhonesService {
   }
 
   private generateCode(): string {
-    const digits = '0123456789';
+    // CSPRNG, not Math.random() — verification codes must be unpredictable.
+    // Brute force is additionally bounded by the throttler on /phones/verify
+    // and the 10-minute expiry.
     let code = '';
     for (let i = 0; i < CODE_LENGTH; i++) {
-      code += digits[Math.floor(Math.random() * digits.length)];
+      code += String(randomInt(0, 10));
     }
     return code;
   }

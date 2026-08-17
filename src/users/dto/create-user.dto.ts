@@ -21,9 +21,11 @@ export class CreateUserDto {
   @IsEmail()
   email!: string;
 
+  // ASVS L1: min 12 chars, allow long passphrases (>= 64). bcrypt truncates at
+  // 72 bytes, so cap there rather than at 45.
   @IsString()
-  @MinLength(6, { message: 'Password must be at least 6 characters' })
-  @MaxLength(45)
+  @MinLength(12, { message: 'Password must be at least 12 characters' })
+  @MaxLength(72)
   password!: string;
 
   @IsString()

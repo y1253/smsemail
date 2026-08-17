@@ -1,7 +1,9 @@
 import { Module } from '@nestjs/common';
+import { APP_GUARD } from '@nestjs/core';
 import { ScheduleModule } from '@nestjs/schedule';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
+import { RateLimitGuard } from './common/rate-limit.guard';
 import { DbConfigModule } from './db-config/db-config.module';
 import { ConfigModule } from '@nestjs/config';
 import { UsersModule } from './users/users.module';
@@ -15,11 +17,12 @@ import { WebhooksModule } from './webhooks/webhooks.module';
 import { OpenAiModule } from './openai/openai.module';
 import { AdminModule } from './admin/admin.module';
 import { PricingModule } from './pricing/pricing.module';
+import { validateEnv } from './common/env.validation';
 
 @Module({
   imports: [
+    ConfigModule.forRoot({ isGlobal: true, validate: validateEnv }),
     DbConfigModule,
-    ConfigModule.forRoot({ isGlobal: true }),
     ScheduleModule.forRoot(),
     SignalwireModule,
     UsersModule,
@@ -34,7 +37,11 @@ import { PricingModule } from './pricing/pricing.module';
     PricingModule,
   ],
   controllers: [AppController],
-  providers: [AppService],
+  providers: [
+    AppService,
+    // Global guard: enforces @RateLimit() where present, no-op elsewhere.
+    { provide: APP_GUARD, useClass: RateLimitGuard },
+  ],
 })
 export class AppModule {}
 

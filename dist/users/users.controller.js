@@ -17,6 +17,7 @@ const common_1 = require("@nestjs/common");
 const users_service_1 = require("./users.service");
 const auth_guard_1 = require("../auth/auth.guard");
 const current_user_decorator_1 = require("../auth/current-user.decorator");
+const rate_limit_guard_1 = require("../common/rate-limit.guard");
 const create_user_dto_1 = require("./dto/create-user.dto");
 const login_user_dto_1 = require("./dto/login-user.dto");
 const google_credential_dto_1 = require("./dto/google-credential.dto");
@@ -49,6 +50,7 @@ __decorate([
 ], UsersController.prototype, "getProfile", null);
 __decorate([
     (0, common_1.Post)('create'),
+    (0, rate_limit_guard_1.RateLimit)({ limit: 5, windowMs: 60_000 }),
     __param(0, (0, common_1.Body)()),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [create_user_dto_1.CreateUserDto]),
@@ -56,6 +58,7 @@ __decorate([
 ], UsersController.prototype, "postUser", null);
 __decorate([
     (0, common_1.Post)('login'),
+    (0, rate_limit_guard_1.RateLimit)({ limit: 10, windowMs: 60_000 }),
     __param(0, (0, common_1.Body)()),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [login_user_dto_1.LoginUserDto]),
@@ -63,6 +66,7 @@ __decorate([
 ], UsersController.prototype, "login", null);
 __decorate([
     (0, common_1.Post)('google'),
+    (0, rate_limit_guard_1.RateLimit)({ limit: 10, windowMs: 60_000 }),
     __param(0, (0, common_1.Body)()),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [google_credential_dto_1.GoogleCredentialDto]),

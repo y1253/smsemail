@@ -16,6 +16,7 @@ const deleted_phone_entity_1 = require("../phones/deleted-phone.entity");
 const admin_controller_1 = require("./admin.controller");
 const admin_service_1 = require("./admin.service");
 const billing_module_1 = require("../billing/billing.module");
+const auth_module_1 = require("../auth/auth.module");
 let AdminModule = class AdminModule {
 };
 exports.AdminModule = AdminModule;
@@ -24,6 +25,7 @@ exports.AdminModule = AdminModule = __decorate([
         imports: [
             typeorm_1.TypeOrmModule.forFeature([user_entity_1.User, email_phone_set_entity_1.EmailPhoneSet, deleted_email_entity_1.DeletedEmail, deleted_phone_entity_1.DeletedPhone]),
             billing_module_1.BillingModule,
+            auth_module_1.AuthModule,
         ],
         controllers: [admin_controller_1.AdminController],
         providers: [admin_service_1.AdminService],

@@ -179,12 +179,21 @@ let GmailService = class GmailService {
             ids.push(inReplyTo);
         return ids.join(' ');
     }
+    sanitizeHeader(value) {
+        return value.replace(/[\r\n]+/g, ' ').trim();
+    }
     buildRaw(from, to, subject, body, opts) {
+        const safeFrom = this.sanitizeHeader(from);
+        const safeTo = this.sanitizeHeader(to);
+        const safeSubject = this.sanitizeHeader(subject);
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(safeTo)) {
+            throw new common_1.BadRequestException('Invalid recipient email address');
+        }
         const inReplyTo = opts?.inReplyTo?.trim();
         const lines = [
-            `From: ${from}`,
-            `To: ${to}`,
-            ...(subject ? [`Subject: ${subject}`] : []),
+            `From: ${safeFrom}`,
+            `To: ${safeTo}`,
+            ...(safeSubject ? [`Subject: ${safeSubject}`] : []),
             ...(inReplyTo
                 ? [
                     `In-Reply-To: ${inReplyTo}`,

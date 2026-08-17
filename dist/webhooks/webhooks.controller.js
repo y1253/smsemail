@@ -16,19 +16,23 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.WebhooksController = void 0;
 const common_1 = require("@nestjs/common");
 const webhooks_service_1 = require("./webhooks.service");
+const webhook_security_service_1 = require("./webhook-security.service");
 let WebhooksController = WebhooksController_1 = class WebhooksController {
     webhooksService;
+    webhookSecurity;
     logger = new common_1.Logger(WebhooksController_1.name);
-    constructor(webhooksService) {
+    constructor(webhooksService, webhookSecurity) {
         this.webhooksService = webhooksService;
+        this.webhookSecurity = webhookSecurity;
     }
-    gmailPush(payload) {
+    async gmailPush(payload, authorization) {
+        await this.webhookSecurity.verifyGmailPush(authorization);
         void this.webhooksService
             .handleGmailPush(payload)
             .catch((err) => this.logger.error(`Gmail push handling failed: ${err}`));
     }
-    async signalwireInbound(payload) {
-        this.logger.debug(`SignalWire inbound payload: ${JSON.stringify(payload)}`);
+    async signalwireInbound(payload, twilioSig, signalwireSig) {
+        this.webhookSecurity.verifySignalwire(twilioSig ?? signalwireSig, payload);
         const msg = payload['message'] ?? {};
         const from = payload['From'] ?? payload['from'] ?? msg['from'] ?? '';
         const body = payload['Body'] ?? payload['body'] ?? msg['body'] ?? '';
@@ -36,7 +40,7 @@ let WebhooksController = WebhooksController_1 = class WebhooksController {
             await this.webhooksService.handleInboundSms(from, body);
         }
         else {
-            this.logger.warn(`SignalWire webhook missing from/body — raw payload: ${JSON.stringify(payload)}`);
+            this.logger.warn('SignalWire webhook missing from/body');
         }
         return '<?xml version="1.0" encoding="UTF-8"?><Response></Response>';
     }
@@ -52,17 +56,20 @@ __decorate([
     (0, common_1.Post)('gmail'),
     (0, common_1.HttpCode)(204),
     __param(0, (0, common_1.Body)()),
+    __param(1, (0, common_1.Headers)('authorization')),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [Object]),
-    __metadata("design:returntype", void 0)
+    __metadata("design:paramtypes", [Object, String]),
+    __metadata("design:returntype", Promise)
 ], WebhooksController.prototype, "gmailPush", null);
 __decorate([
     (0, common_1.Post)('signalwire'),
     (0, common_1.HttpCode)(200),
     (0, common_1.Header)('Content-Type', 'text/xml'),
     __param(0, (0, common_1.Body)()),
+    __param(1, (0, common_1.Headers)('x-twilio-signature')),
+    __param(2, (0, common_1.Headers)('x-signalwire-signature')),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [Object]),
+    __metadata("design:paramtypes", [Object, String, String]),
     __metadata("design:returntype", Promise)
 ], WebhooksController.prototype, "signalwireInbound", null);
 __decorate([
@@ -76,6 +83,7 @@ __decorate([
 ], WebhooksController.prototype, "stripeWebhook", null);
 exports.WebhooksController = WebhooksController = WebhooksController_1 = __decorate([
     (0, common_1.Controller)('webhooks'),
-    __metadata("design:paramtypes", [webhooks_service_1.WebhooksService])
+    __metadata("design:paramtypes", [webhooks_service_1.WebhooksService,
+        webhook_security_service_1.WebhookSecurityService])
 ], WebhooksController);
 //# sourceMappingURL=webhooks.controller.js.map

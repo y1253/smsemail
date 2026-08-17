@@ -8,6 +8,7 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.DbConfigModule = void 0;
 const common_1 = require("@nestjs/common");
+const config_1 = require("@nestjs/config");
 const typeorm_1 = require("@nestjs/typeorm");
 const email_entity_1 = require("../emails/email.entity");
 const phone_entity_1 = require("../phones/phone.entity");
@@ -28,16 +29,20 @@ exports.DbConfigModule = DbConfigModule;
 exports.DbConfigModule = DbConfigModule = __decorate([
     (0, common_1.Module)({
         imports: [
-            typeorm_1.TypeOrmModule.forRoot({
-                type: 'mysql',
-                driver: require('mysql2'),
-                host: 'localhost',
-                port: 3306,
-                username: 'yg',
-                password: '12345',
-                database: 'smsemail',
-                synchronize: true,
-                entities: [user_entity_1.User, email_entity_1.Email, phone_entity_1.Phone, phone_verification_entity_1.PhoneVerification, transaction_entity_1.Transaction, subscription_entity_1.Subscription, income_message_entity_1.IncomeMessage, out_message_entity_1.OutMessage, email_phone_set_entity_1.EmailPhoneSet, set_allowed_sender_entity_1.SetAllowedSender, pending_sms_command_entity_1.PendingSmsCommand, deleted_email_entity_1.DeletedEmail, deleted_phone_entity_1.DeletedPhone],
+            typeorm_1.TypeOrmModule.forRootAsync({
+                imports: [config_1.ConfigModule],
+                inject: [config_1.ConfigService],
+                useFactory: (config) => ({
+                    type: 'mysql',
+                    driver: require('mysql2'),
+                    host: config.get('DB_HOST'),
+                    port: Number(config.get('DB_PORT') ?? 3306),
+                    username: config.get('DB_USER'),
+                    password: config.get('DB_PASSWORD'),
+                    database: config.get('DB_NAME'),
+                    synchronize: false,
+                    entities: [user_entity_1.User, email_entity_1.Email, phone_entity_1.Phone, phone_verification_entity_1.PhoneVerification, transaction_entity_1.Transaction, subscription_entity_1.Subscription, income_message_entity_1.IncomeMessage, out_message_entity_1.OutMessage, email_phone_set_entity_1.EmailPhoneSet, set_allowed_sender_entity_1.SetAllowedSender, pending_sms_command_entity_1.PendingSmsCommand, deleted_email_entity_1.DeletedEmail, deleted_phone_entity_1.DeletedPhone],
+                }),
             }),
         ],
         exports: [typeorm_1.TypeOrmModule],

@@ -28,5 +28,6 @@ export declare class GmailService {
     private findPartData;
     private stripQuotedText;
     private buildReferences;
+    private sanitizeHeader;
     private buildRaw;
 }

@@ -28,9 +28,25 @@ exports.UsersModule = UsersModule = __decorate([
                 global: true,
                 imports: [config_1.ConfigModule],
                 inject: [config_1.ConfigService],
-                useFactory: (config) => ({
-                    secret: config.get('JWT_SECRET') ?? 'changeme',
-                }),
+                useFactory: (config) => {
+                    const secret = config.get('JWT_SECRET');
+                    if (!secret) {
+                        throw new Error('JWT_SECRET is not set');
+                    }
+                    return {
+                        secret,
+                        signOptions: {
+                            expiresIn: '24h',
+                            issuer: 'emailontext',
+                            audience: 'emailontext-app',
+                        },
+                        verifyOptions: {
+                            algorithms: ['HS256'],
+                            issuer: 'emailontext',
+                            audience: 'emailontext-app',
+                        },
+                    };
+                },
             }),
         ],
         controllers: [users_controller_1.UsersController],
