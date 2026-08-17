@@ -8,8 +8,7 @@ server {
 }
 
 server {
-    listen 443 ssl;
-    http2 on;
+    listen 443 ssl http2;
     server_name ygbackend.com emailontext.com;
 
     # Don't leak the nginx version.
