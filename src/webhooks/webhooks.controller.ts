@@ -49,7 +49,15 @@ export class WebhooksController {
     @Body() payload: Record<string, any>,
     @Headers('x-twilio-signature') twilioSig: string,
     @Headers('x-signalwire-signature') signalwireSig: string,
+    @Headers('content-type') contentType: string,
   ): Promise<string> {
+    // TEMP DIAGNOSTIC (remove after fixing signature verification): logs the
+    // request shape only (no PII values) to determine SignalWire's signing method.
+    this.logger.warn(
+      `SW-DIAG content-type=${contentType} twilioSig=${twilioSig ? 'yes(' + twilioSig.length + ')' : 'no'} ` +
+        `signalwireSig=${signalwireSig ? 'yes' : 'no'} keys=[${Object.keys(payload ?? {}).join(',')}] ` +
+        `sigValue=${twilioSig ?? signalwireSig ?? 'none'}`,
+    );
     // Verify the Twilio-compatible HMAC signature before trusting `From`.
     // Without this, anyone could POST a spoofed From and send mail from a
     // victim's connected Gmail. Fails closed.

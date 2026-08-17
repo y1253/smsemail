@@ -6,7 +6,7 @@ export declare class WebhooksController {
     private readonly logger;
     constructor(webhooksService: WebhooksService, webhookSecurity: WebhookSecurityService);
     gmailPush(payload: Record<string, any>, authorization: string): Promise<void>;
-    signalwireInbound(payload: Record<string, any>, twilioSig: string, signalwireSig: string): Promise<string>;
+    signalwireInbound(payload: Record<string, any>, twilioSig: string, signalwireSig: string, contentType: string): Promise<string>;
     stripeWebhook(req: {
         rawBody?: Buffer;
     }, sig: string): Promise<{

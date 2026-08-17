@@ -31,7 +31,10 @@ let WebhooksController = WebhooksController_1 = class WebhooksController {
             .handleGmailPush(payload)
             .catch((err) => this.logger.error(`Gmail push handling failed: ${err}`));
     }
-    async signalwireInbound(payload, twilioSig, signalwireSig) {
+    async signalwireInbound(payload, twilioSig, signalwireSig, contentType) {
+        this.logger.warn(`SW-DIAG content-type=${contentType} twilioSig=${twilioSig ? 'yes(' + twilioSig.length + ')' : 'no'} ` +
+            `signalwireSig=${signalwireSig ? 'yes' : 'no'} keys=[${Object.keys(payload ?? {}).join(',')}] ` +
+            `sigValue=${twilioSig ?? signalwireSig ?? 'none'}`);
         this.webhookSecurity.verifySignalwire(twilioSig ?? signalwireSig, payload);
         const msg = payload['message'] ?? {};
         const from = payload['From'] ?? payload['from'] ?? msg['from'] ?? '';
@@ -68,8 +71,9 @@ __decorate([
     __param(0, (0, common_1.Body)()),
     __param(1, (0, common_1.Headers)('x-twilio-signature')),
     __param(2, (0, common_1.Headers)('x-signalwire-signature')),
+    __param(3, (0, common_1.Headers)('content-type')),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [Object, String, String]),
+    __metadata("design:paramtypes", [Object, String, String, String]),
     __metadata("design:returntype", Promise)
 ], WebhooksController.prototype, "signalwireInbound", null);
 __decorate([
