@@ -237,7 +237,7 @@ S someone@example.com your message
 Send with a subject:
 S someone@example.com | Subject | your message
 
-Help: yechiel1253@gmail.com
+Help: support@emailontext.com
 Reply STOP to unsubscribe`,
       );
       return;
