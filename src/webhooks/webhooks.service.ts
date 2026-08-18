@@ -146,7 +146,10 @@ export class WebhooksService {
           const summary = await this.openAiService.summarize(msg.subject, msg.body, bodyBudget);
 
           const sms = this.buildSms(msg.sender, summary, msg.attachmentCount, saved.messageId, email.email);
-          const senderAddr = this.extractEmailAddress(msg.sender);
+          // Lowercased here, not in the helper: set_allowed_sender.email is
+          // stored lowercased (SetsService), so the comparison needs it — but
+          // replies must keep the sender's original case.
+          const senderAddr = this.extractEmailAddress(msg.sender).toLowerCase();
           // Nothing in the DB stops two active sets from carrying the same
           // number (uniqueness is only enforced in app code), and that would be
           // two identical texts with the same "R <id>".
@@ -366,11 +369,14 @@ Reply STOP to unsubscribe`,
     }
     const refreshToken = this.emailsService.decrypt(email.refreshToken);
     const { rfcMessageId, referencesHeader } = await this.resolveThreadingHeaders(refreshToken, msg);
+    // msg.sender is the raw From header ("Bob Smith <bob@work.com>"); Gmail's
+    // recipient validation only accepts a bare address, so send the address.
+    const to = this.extractEmailAddress(msg.sender);
     try {
       await this.gmailService.sendReply(
         refreshToken,
         msg.gmailThreadId,
-        msg.sender,
+        to,
         msg.subject,
         replyText,
         email.email,
@@ -381,7 +387,7 @@ Reply STOP to unsubscribe`,
       await this.handleSendError(from, email, err);
       return;
     }
-    await this.signalwireService.sendSms(from, `Sent to ${msg.sender}`);
+    await this.signalwireService.sendSms(from, `Sent to ${to}`);
   }
 
   /**
@@ -570,9 +576,13 @@ Reply STOP to unsubscribe`,
     throw new Error('Could not allocate a unique message id after 5 attempts');
   }
 
+  // "Bob Smith <bob@work.com>" -> "bob@work.com". Case is preserved: the local
+  // part of an address is case-sensitive, so a reply has to go out with the
+  // case the sender used. Callers that compare against stored addresses
+  // lowercase at the comparison instead.
   private extractEmailAddress(sender: string): string {
     const match = sender.match(/<([^>]+)>/);
-    return (match ? match[1] : sender).trim().toLowerCase();
+    return (match ? match[1] : sender).trim();
   }
 
   private formatSender(raw: string): string {

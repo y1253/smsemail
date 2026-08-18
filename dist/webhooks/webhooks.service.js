@@ -131,7 +131,7 @@ let WebhooksService = class WebhooksService {
                     const { bodyBudget } = this.smsScaffold(msg.sender, email.email, msg.attachmentCount, saved.messageId);
                     const summary = await this.openAiService.summarize(msg.subject, msg.body, bodyBudget);
                     const sms = this.buildSms(msg.sender, summary, msg.attachmentCount, saved.messageId, email.email);
-                    const senderAddr = this.extractEmailAddress(msg.sender);
+                    const senderAddr = this.extractEmailAddress(msg.sender).toLowerCase();
                     const sentTo = new Set();
                     for (const set of activeSets) {
                         if (set.phone.optedOutAt)
@@ -314,14 +314,15 @@ Reply STOP to unsubscribe`);
         }
         const refreshToken = this.emailsService.decrypt(email.refreshToken);
         const { rfcMessageId, referencesHeader } = await this.resolveThreadingHeaders(refreshToken, msg);
+        const to = this.extractEmailAddress(msg.sender);
         try {
-            await this.gmailService.sendReply(refreshToken, msg.gmailThreadId, msg.sender, msg.subject, replyText, email.email, rfcMessageId, referencesHeader);
+            await this.gmailService.sendReply(refreshToken, msg.gmailThreadId, to, msg.subject, replyText, email.email, rfcMessageId, referencesHeader);
         }
         catch (err) {
             await this.handleSendError(from, email, err);
             return;
         }
-        await this.signalwireService.sendSms(from, `Sent to ${msg.sender}`);
+        await this.signalwireService.sendSms(from, `Sent to ${to}`);
     }
     async resolveThreadingHeaders(refreshToken, msg) {
         if (msg.rfcMessageId) {
@@ -462,7 +463,7 @@ Reply STOP to unsubscribe`);
     }
     extractEmailAddress(sender) {
         const match = sender.match(/<([^>]+)>/);
-        return (match ? match[1] : sender).trim().toLowerCase();
+        return (match ? match[1] : sender).trim();
     }
     formatSender(raw) {
         const match = raw.match(/^(.*?)\s*<([^>]+)>$/);

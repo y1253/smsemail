@@ -93,6 +93,107 @@ function makeHarness(opts: { phones?: string[] } = {}) {
   };
 }
 
+/**
+ * Harness for the inbound-SMS path. Unlike makeHarness (which only wires the
+ * Gmail-push repos) this stubs phoneRepo/pendingRepo and a stored message, so
+ * an "R <id> ..." command can be driven end to end.
+ */
+function makeSmsHarness(opts: { sender?: string } = {}) {
+  const emailRow: any = { emailId: 7, email: 'me@example.com', refreshToken: 'enc' };
+  const storedMessage: any = {
+    messageId: 481920,
+    email: emailRow,
+    gmailMessageId: 'gm-1',
+    gmailThreadId: 'th-1',
+    rfcMessageId: '<abc@mail.gmail.com>',
+    referencesHeader: null,
+    sender: opts.sender ?? 'Them <them@example.com>',
+    subject: 'Lunch',
+  };
+
+  const phoneRepo = {
+    findOne: jest.fn().mockResolvedValue({ phoneId: 1, phone: '15550001111', optedOutAt: null }),
+    save: jest.fn(),
+  };
+  const setRepo = {
+    find: jest.fn().mockResolvedValue([{ setId: 1, email: emailRow }]),
+  };
+  const incomeMessageRepo = {
+    findOne: jest.fn().mockResolvedValue(storedMessage),
+    update: jest.fn(),
+  };
+  const pendingRepo = { findOne: jest.fn().mockResolvedValue(null), delete: jest.fn(), save: jest.fn(), create: jest.fn() };
+  const gmailService = { sendReply: jest.fn().mockResolvedValue(undefined), fetchMessage: jest.fn() };
+  const signalwireService = { sendSms: jest.fn().mockResolvedValue(undefined) };
+  const emailsService = { decrypt: jest.fn((t: string) => t) };
+
+  const service = new WebhooksService(
+    {} as never,
+    phoneRepo as never,
+    setRepo as never,
+    incomeMessageRepo as never,
+    pendingRepo as never,
+    { get: () => 'sk_test' } as never,
+    emailsService as never,
+    gmailService as never,
+    {} as never,
+    signalwireService as never,
+  );
+
+  return { service, gmailService, signalwireService, incomeMessageRepo, storedMessage };
+}
+
+/** Every text sent back to the user, concatenated. */
+function textsSent(signalwireService: { sendSms: jest.Mock }): string {
+  return signalwireService.sendSms.mock.calls.map((c) => c[1]).join('\n');
+}
+
+describe('WebhooksService.handleInboundSms — reply recipient', () => {
+  // Regression: msg.sender is the raw From header. Passing it straight through
+  // as the recipient made Gmail's bare-address validation reject every reply,
+  // so "R <id> ..." always answered with the generic error text.
+  it('replies to the bare address, not the raw From header', async () => {
+    const h = makeSmsHarness({ sender: 'Them <them@example.com>' });
+
+    await h.service.handleInboundSms('+15550001111', 'R 481920 hi there');
+
+    expect(h.gmailService.sendReply).toHaveBeenCalledTimes(1);
+    const [, threadId, to, subject, body] = h.gmailService.sendReply.mock.calls[0];
+    expect(to).toBe('them@example.com');
+    expect(threadId).toBe('th-1');
+    expect(subject).toBe('Lunch');
+    expect(body).toBe('hi there');
+    expect(textsSent(h.signalwireService)).toBe('Sent to them@example.com');
+    expect(textsSent(h.signalwireService)).not.toContain('something went wrong');
+  });
+
+  it('preserves the case of the address local part', async () => {
+    const h = makeSmsHarness({ sender: 'Them <Them.Person@Example.com>' });
+
+    await h.service.handleInboundSms('+15550001111', 'R 481920 hi');
+
+    expect(h.gmailService.sendReply.mock.calls[0][2]).toBe('Them.Person@Example.com');
+  });
+
+  it('handles a From header that is already a bare address', async () => {
+    const h = makeSmsHarness({ sender: 'them@example.com' });
+
+    await h.service.handleInboundSms('+15550001111', 'R 481920 hi');
+
+    expect(h.gmailService.sendReply.mock.calls[0][2]).toBe('them@example.com');
+  });
+
+  it('applies the same extraction on the bare-R (latest message) branch', async () => {
+    const h = makeSmsHarness({ sender: 'Them <them@example.com>' });
+
+    await h.service.handleInboundSms('+15550001111', 'R just the latest one');
+
+    expect(h.gmailService.sendReply).toHaveBeenCalledTimes(1);
+    expect(h.gmailService.sendReply.mock.calls[0][2]).toBe('them@example.com');
+    expect(h.gmailService.sendReply.mock.calls[0][4]).toBe('just the latest one');
+  });
+});
+
 describe('WebhooksService.handleGmailPush — duplicate delivery', () => {
   it('sends one SMS for a first-time message', async () => {
     const h = makeHarness();
