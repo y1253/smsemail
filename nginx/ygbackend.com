@@ -7,24 +7,16 @@ server {
     location / { return 301 https://$host$request_uri; }
 }
 
-# ygbackend.com serves the same app as emailontext.com. Without this redirect
-# both hostnames return 200 for every URL, which is duplicate content across two
-# domains and splits ranking signals. The cert already covers both names, so no
-# certbot work is needed here.
+# Both hostnames are served here deliberately. Do NOT add a 301 from
+# ygbackend.com to emailontext.com: the Gmail Pub/Sub push subscription, the
+# SignalWire webhook and the Stripe webhook are all registered against
+# ygbackend.com, and none of those callers follow redirects — a 3xx is a
+# silently dropped delivery, which stops emails being forwarded as SMS.
+# Duplicate content is handled by the absolute <link rel="canonical"> that every
+# prerendered page carries, pointing at emailontext.com.
 server {
     listen 443 ssl http2;
-    server_name ygbackend.com;
-
-    ssl_certificate     /etc/letsencrypt/live/ygbackend.com/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/ygbackend.com/privkey.pem;
-    ssl_protocols       TLSv1.2 TLSv1.3;
-
-    return 301 https://emailontext.com$request_uri;
-}
-
-server {
-    listen 443 ssl http2;
-    server_name emailontext.com;
+    server_name ygbackend.com emailontext.com;
 
     # Don't leak the nginx version.
     server_tokens off;
