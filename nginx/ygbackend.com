@@ -88,13 +88,16 @@ server {
     }
 
     # Frontend SPA.
-    #   $uri     -> a prerendered file, e.g. /assets/*, /robots.txt
-    #   $uri/    -> a prerendered directory, e.g. /guides/foo/index.html
+    #   $uri      -> a real file (/assets/*, /robots.txt), or `/` -> index.html
+    #   $uri.html -> a prerendered page, e.g. /guides/foo -> /guides/foo.html
     #   /app.html -> the noindex shell, for client-only routes (/login,
     #                /dashboard, /admin) and any unknown URL. Falling back to
     #                /index.html instead would serve the landing page — and its
     #                canonical tag — for every app route.
+    #
+    # `$uri/` is deliberately absent: it makes nginx issue an external 301 to
+    # add a trailing slash, which would redirect every canonical URL.
     location / {
-        try_files $uri $uri/ /app.html;
+        try_files $uri $uri.html /app.html;
     }
 }
