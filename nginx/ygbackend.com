@@ -7,9 +7,24 @@ server {
     location / { return 301 https://$host$request_uri; }
 }
 
+# ygbackend.com serves the same app as emailontext.com. Without this redirect
+# both hostnames return 200 for every URL, which is duplicate content across two
+# domains and splits ranking signals. The cert already covers both names, so no
+# certbot work is needed here.
 server {
     listen 443 ssl http2;
-    server_name ygbackend.com emailontext.com;
+    server_name ygbackend.com;
+
+    ssl_certificate     /etc/letsencrypt/live/ygbackend.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/ygbackend.com/privkey.pem;
+    ssl_protocols       TLSv1.2 TLSv1.3;
+
+    return 301 https://emailontext.com$request_uri;
+}
+
+server {
+    listen 443 ssl http2;
+    server_name emailontext.com;
 
     # Don't leak the nginx version.
     server_tokens off;
@@ -65,8 +80,21 @@ server {
         proxy_read_timeout 120s;
     }
 
-    # Frontend SPA
+    # Hashed filenames, so they can be cached indefinitely. Use `expires` only:
+    # an `add_header` in a nested location cancels every inherited add_header,
+    # which would silently drop the security headers above.
+    location /assets/ {
+        expires 1y;
+    }
+
+    # Frontend SPA.
+    #   $uri     -> a prerendered file, e.g. /assets/*, /robots.txt
+    #   $uri/    -> a prerendered directory, e.g. /guides/foo/index.html
+    #   /app.html -> the noindex shell, for client-only routes (/login,
+    #                /dashboard, /admin) and any unknown URL. Falling back to
+    #                /index.html instead would serve the landing page — and its
+    #                canonical tag — for every app route.
     location / {
-        try_files $uri $uri/ /index.html;
+        try_files $uri $uri/ /app.html;
     }
 }
