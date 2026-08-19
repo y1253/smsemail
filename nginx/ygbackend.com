@@ -96,7 +96,13 @@ server {
     #                canonical tag — for every app route.
     #
     # `$uri/` is deliberately absent: it makes nginx issue an external 301 to
-    # add a trailing slash, which would redirect every canonical URL.
+    # add a trailing slash, which would redirect every canonical URL. That also
+    # means bare `/` can't resolve through try_files, so it gets its own exact
+    # match below.
+    location = / {
+        try_files /index.html =404;
+    }
+
     location / {
         try_files $uri $uri.html /app.html;
     }
