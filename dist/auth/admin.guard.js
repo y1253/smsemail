@@ -20,12 +20,16 @@ let AdminGuard = class AdminGuard {
     canActivate(context) {
         const request = context.switchToHttp().getRequest();
         const email = request.user?.email;
+        const amr = request.user?.amr;
         const allowlist = (this.config.get('ADMIN_EMAILS') ?? '')
             .split(',')
             .map((e) => e.trim().toLowerCase())
             .filter(Boolean);
         if (!email || !allowlist.includes(email.toLowerCase())) {
             throw new common_1.ForbiddenException('Admin access required');
+        }
+        if (amr !== 'google') {
+            throw new common_1.ForbiddenException('Admin access requires signing in with Google, which enforces two-step verification. Sign out and use "Continue with Google".');
         }
         return true;
     }

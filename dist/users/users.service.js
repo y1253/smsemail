@@ -114,6 +114,7 @@ let UsersService = class UsersService {
             userId: user.userId,
             email: user.email || '',
             tokenVersion: user.tokenVersion,
+            amr: 'pwd',
         });
         return { ok: true, token };
     }
@@ -186,6 +187,7 @@ let UsersService = class UsersService {
             userId: saved.userId,
             email,
             tokenVersion: saved.tokenVersion ?? 0,
+            amr: 'pwd',
         });
     }
     static DUMMY_HASH = '$2b$10$zJQZuvQszFCsN5HCNHJZnOoSY3Ez0l3YKgzitZRSUJHS89Gnx5MaO';
@@ -204,6 +206,7 @@ let UsersService = class UsersService {
             userId: savedUser.userId,
             email: savedUser.email || '',
             tokenVersion: savedUser.tokenVersion ?? 0,
+            amr: 'pwd',
         });
     }
     async googleLogin(credential) {
@@ -246,6 +249,7 @@ let UsersService = class UsersService {
             userId: user.userId,
             email: user.email || '',
             tokenVersion: user.tokenVersion ?? 0,
+            amr: 'google',
         });
         return {
             accessToken,
@@ -256,8 +260,8 @@ let UsersService = class UsersService {
             email,
         });
     }
-    async createToken({ userId, email, tokenVersion, }) {
-        const payload = { user_id: userId, email, tv: tokenVersion };
+    async createToken({ userId, email, tokenVersion, amr, }) {
+        const payload = { user_id: userId, email, tv: tokenVersion, amr };
         return await this.jwtService.signAsync(payload);
     }
     async hashPassword(password) {

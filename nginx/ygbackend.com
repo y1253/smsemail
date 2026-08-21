@@ -26,8 +26,14 @@ server {
     ssl_session_cache   shared:SSL:10m;
     ssl_session_timeout 10m;
     ssl_protocols       TLSv1.2 TLSv1.3;
-    ssl_ciphers         HIGH:!aNULL:!MD5;
-    ssl_prefer_server_ciphers on;
+    # Mozilla "intermediate" suite list: AEAD only (GCM / ChaCha20-Poly1305)
+    # and forward-secret only (ECDHE / DHE). The previous `HIGH:!aNULL:!MD5`
+    # still permitted CBC-mode and SHA-1 MAC suites, which is what CASA means
+    # by cipher suites with known weaknesses.
+    ssl_ciphers         ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:DHE-RSA-AES128-GCM-SHA256:DHE-RSA-AES256-GCM-SHA384:DHE-RSA-CHACHA20-POLY1305;
+    # With an AEAD-only list the client's preference is safe to honour, which
+    # is what Mozilla recommends for the intermediate profile.
+    ssl_prefer_server_ciphers off;
 
     # ── Security headers (CASA / OWASP ASVS). `always` so they are sent on error
     # responses too, which the DAST scanner checks. ─────────────────────────────
@@ -46,6 +52,10 @@ server {
     index index.html;
 
     client_max_body_size 10m;
+
+    # Explicit, though off is already the nginx default: no directory listing
+    # is ever served for any location in this server block.
+    autoindex off;
 
     # Admin API (subpaths only; bare /admin is the SPA page)
     location ~ ^/admin/ {

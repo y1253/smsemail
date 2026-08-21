@@ -27,6 +27,13 @@ type JwtPayload = {
   email: string;
   /** Session generation. AuthGuard rejects a token whose tv is stale. */
   tv: number;
+  /**
+   * Authentication Method Reference: how this session was established.
+   * 'google' means the user completed a Google sign-in, so Google enforced
+   * whatever factors that account requires. AdminGuard accepts only 'google',
+   * which is how administrative access gets multi-factor authentication.
+   */
+  amr: 'google' | 'pwd';
 };
 
 /** How long an emailed temporary password stays usable. */
@@ -128,6 +135,9 @@ export class UsersService {
       userId: user.userId,
       email: user.email || '',
       tokenVersion: user.tokenVersion,
+      // A password change does not upgrade the session's authentication
+      // method; it stays whatever it was established with.
+      amr: 'pwd',
     });
 
     return { ok: true as const, token };
@@ -253,6 +263,7 @@ export class UsersService {
       userId: saved.userId,
       email,
       tokenVersion: saved.tokenVersion ?? 0,
+      amr: 'pwd',
     });
   }
 
@@ -288,6 +299,7 @@ export class UsersService {
       userId: savedUser.userId,
       email: savedUser.email || '',
       tokenVersion: savedUser.tokenVersion ?? 0,
+      amr: 'pwd',
     });
   }
 
@@ -337,6 +349,7 @@ export class UsersService {
       userId: user.userId,
       email: user.email || '',
       tokenVersion: user.tokenVersion ?? 0,
+      amr: 'google',
     });
 
     return {
@@ -354,12 +367,14 @@ export class UsersService {
     userId,
     email,
     tokenVersion,
+    amr,
   }: {
     userId: number;
     email: string;
     tokenVersion: number;
+    amr: 'google' | 'pwd';
   }): Promise<string> {
-    const payload: JwtPayload = { user_id: userId, email, tv: tokenVersion };
+    const payload: JwtPayload = { user_id: userId, email, tv: tokenVersion, amr };
     return await this.jwtService.signAsync(payload);
   }
 
