@@ -53,6 +53,11 @@ export class PhonesService {
     const expiresAt = new Date();
     expiresAt.setMinutes(expiresAt.getMinutes() + CODE_EXPIRY_MINUTES);
 
+    // Only one code may be live per number at a time. Without this, repeated
+    // requests stack concurrently valid codes and every extra one multiplies
+    // an attacker's odds of guessing any of them inside the same window.
+    await this.verificationRepo.delete({ userId, phone });
+
     const verification = this.verificationRepo.create({
       userId,
       phone,

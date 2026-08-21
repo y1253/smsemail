@@ -56,7 +56,7 @@ describe('UsersService password + profile', () => {
           current_password: CURRENT,
           new_password: NEXT,
         }),
-      ).resolves.toEqual({ ok: true });
+      ).resolves.toEqual({ ok: true, token: 'token' });
 
       expect(userRepo.save).toHaveBeenCalledTimes(1);
       const saved = userRepo.save.mock.calls[0][0];
@@ -105,6 +105,32 @@ describe('UsersService password + profile', () => {
       ).rejects.toBeInstanceOf(BadRequestException);
 
       expect(userRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('bumps tokenVersion so other devices are signed out', async () => {
+      const { svc, userRepo } = build(await passwordUser({ tokenVersion: 3 }));
+
+      await svc.changePassword(1, {
+        current_password: CURRENT,
+        new_password: NEXT,
+      });
+
+      const saved = userRepo.save.mock.calls[0][0];
+      // Every JWT minted at generation 3 stops verifying once this lands.
+      expect(saved.tokenVersion).toBe(4);
+    });
+
+    it('treats a missing tokenVersion as generation 0', async () => {
+      const user = await passwordUser();
+      delete (user as Record<string, unknown>).tokenVersion;
+      const { svc, userRepo } = build(user);
+
+      await svc.changePassword(1, {
+        current_password: CURRENT,
+        new_password: NEXT,
+      });
+
+      expect(userRepo.save.mock.calls[0][0].tokenVersion).toBe(1);
     });
 
     it('404s for a missing user', async () => {
@@ -174,6 +200,14 @@ describe('UsersService password + profile', () => {
       // Long enough to satisfy the MinLength(12) policy it has to live under.
       expect(temp.length).toBeGreaterThanOrEqual(12);
       expect(saved.tempPasswordExpiresAt.getTime()).toBeGreaterThan(Date.now());
+    });
+
+    it('bumps tokenVersion, so a reset kills every existing session', async () => {
+      const { svc, userRepo } = build(await passwordUser({ tokenVersion: 7 }));
+
+      await svc.forgotPassword('owner@example.com');
+
+      expect(userRepo.save.mock.calls[0][0].tokenVersion).toBe(8);
     });
 
     it('never reuses a temp password', async () => {

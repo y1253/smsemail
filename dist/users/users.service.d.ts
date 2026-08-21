@@ -15,7 +15,8 @@ export declare class UsersService {
     getProfile(userId: number): Promise<User>;
     updateProfile(userId: number, dto: UpdateProfileDto): Promise<User>;
     changePassword(userId: number, dto: ChangePasswordDto): Promise<{
-        ok: boolean;
+        ok: true;
+        token: string;
     }>;
     forgotPassword(email: string): Promise<{
         ok: true;

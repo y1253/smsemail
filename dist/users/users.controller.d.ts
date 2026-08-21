@@ -15,7 +15,8 @@ export declare class UsersController {
     getProfile(user: JwtPayload): Promise<import("./user.entity").User>;
     updateProfile(user: JwtPayload, body: UpdateProfileDto): Promise<import("./user.entity").User>;
     changePassword(user: JwtPayload, body: ChangePasswordDto): Promise<{
-        ok: boolean;
+        ok: true;
+        token: string;
     }>;
     postUser(newUser: CreateUserDto): Promise<string>;
     login(user: LoginUserDto): Promise<string>;

@@ -48,10 +48,16 @@ export class RateLimitGuard implements CanActivate {
     const now = performance.now();
     this.sweep(now);
 
+    // Deliberately NOT X-Forwarded-For. nginx builds that header with
+    // $proxy_add_x_forwarded_for, which appends the real peer to whatever the
+    // client sent, so its first entry is attacker-controlled — keying on it
+    // lets anyone reset their own limit by rotating a spoofed value.
+    // X-Real-IP is set with proxy_set_header, which replaces any client copy,
+    // and the app listens on loopback so only nginx can reach it.
     const ip =
-      (req.headers?.['x-forwarded-for']?.split(',')[0]?.trim() as string) ||
-      req.ip ||
+      ((req.headers?.['x-real-ip'] as string | undefined)?.trim()) ||
       req.socket?.remoteAddress ||
+      req.ip ||
       'unknown';
     const key = `${ip}:${req.method}:${req.route?.path ?? req.url}`;
 

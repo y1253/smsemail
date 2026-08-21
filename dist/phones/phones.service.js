@@ -55,6 +55,7 @@ let PhonesService = class PhonesService {
         const code = this.generateCode();
         const expiresAt = new Date();
         expiresAt.setMinutes(expiresAt.getMinutes() + CODE_EXPIRY_MINUTES);
+        await this.verificationRepo.delete({ userId, phone });
         const verification = this.verificationRepo.create({
             userId,
             phone,

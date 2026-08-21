@@ -25,6 +25,8 @@ import {
 type JwtPayload = {
   user_id: number;
   email: string;
+  /** Session generation. AuthGuard rejects a token whose tv is stale. */
+  tv: number;
 };
 
 /** How long an emailed temporary password stays usable. */
@@ -114,9 +116,21 @@ export class UsersService {
     // This password is the user's own choice, so it never expires — clearing
     // the stamp is what ends a forgot-password cycle.
     user.tempPasswordExpiresAt = null;
+    // Terminate every session issued before this moment (ASVS 3.3.3). Tokens
+    // on other devices carry the old tv and stop verifying immediately.
+    user.tokenVersion = (user.tokenVersion ?? 0) + 1;
     await this.userRepo.save(user);
 
-    return { ok: true };
+    // The caller's own token was just invalidated along with the rest, so hand
+    // back a replacement — the session that performed the change is the one
+    // session that should survive it.
+    const token = await this.createToken({
+      userId: user.userId,
+      email: user.email || '',
+      tokenVersion: user.tokenVersion,
+    });
+
+    return { ok: true as const, token };
   }
 
   /**
@@ -171,6 +185,10 @@ export class UsersService {
 
     user.password = await this.hashPassword(tempPassword);
     user.tempPasswordExpiresAt = expiresAt;
+    // A reset is a recovery event: the account may already be compromised, so
+    // every existing session dies here, with no survivor. Whoever holds the
+    // emailed password must sign in again to get a token (ASVS 3.3.3).
+    user.tokenVersion = (user.tokenVersion ?? 0) + 1;
     await this.userRepo.save(user);
 
     return { ok: true };
@@ -229,9 +247,13 @@ export class UsersService {
       authType: auth_type,
     });
 
-    const { userId } = await this.userRepo.save(account);
+    const saved = await this.userRepo.save(account);
 
-    return this.jwtService.signAsync({ user_id: userId, email });
+    return this.createToken({
+      userId: saved.userId,
+      email,
+      tokenVersion: saved.tokenVersion ?? 0,
+    });
   }
 
   // A valid bcrypt hash of a random string, used to equalise timing when the
@@ -265,6 +287,7 @@ export class UsersService {
     return await this.createToken({
       userId: savedUser.userId,
       email: savedUser.email || '',
+      tokenVersion: savedUser.tokenVersion ?? 0,
     });
   }
 
@@ -313,6 +336,7 @@ export class UsersService {
     const accessToken = await this.createToken({
       userId: user.userId,
       email: user.email || '',
+      tokenVersion: user.tokenVersion ?? 0,
     });
 
     return {
@@ -329,11 +353,13 @@ export class UsersService {
   private async createToken({
     userId,
     email,
+    tokenVersion,
   }: {
     userId: number;
     email: string;
+    tokenVersion: number;
   }): Promise<string> {
-    const payload: JwtPayload = { user_id: userId, email };
+    const payload: JwtPayload = { user_id: userId, email, tv: tokenVersion };
     return await this.jwtService.signAsync(payload);
   }
 

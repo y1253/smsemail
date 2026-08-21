@@ -108,8 +108,14 @@ let UsersService = class UsersService {
         }
         user.password = await this.hashPassword(dto.new_password);
         user.tempPasswordExpiresAt = null;
+        user.tokenVersion = (user.tokenVersion ?? 0) + 1;
         await this.userRepo.save(user);
-        return { ok: true };
+        const token = await this.createToken({
+            userId: user.userId,
+            email: user.email || '',
+            tokenVersion: user.tokenVersion,
+        });
+        return { ok: true, token };
     }
     async forgotPassword(email) {
         const user = await this.getUserByEmail(email);
@@ -137,6 +143,7 @@ let UsersService = class UsersService {
         expiresAt.setMinutes(expiresAt.getMinutes() + TEMP_PASSWORD_EXPIRY_MINUTES);
         user.password = await this.hashPassword(tempPassword);
         user.tempPasswordExpiresAt = expiresAt;
+        user.tokenVersion = (user.tokenVersion ?? 0) + 1;
         await this.userRepo.save(user);
         return { ok: true };
     }
@@ -174,8 +181,12 @@ let UsersService = class UsersService {
             password: await this.hashPassword(password),
             authType: auth_type,
         });
-        const { userId } = await this.userRepo.save(account);
-        return this.jwtService.signAsync({ user_id: userId, email });
+        const saved = await this.userRepo.save(account);
+        return this.createToken({
+            userId: saved.userId,
+            email,
+            tokenVersion: saved.tokenVersion ?? 0,
+        });
     }
     static DUMMY_HASH = '$2b$10$zJQZuvQszFCsN5HCNHJZnOoSY3Ez0l3YKgzitZRSUJHS89Gnx5MaO';
     async login(user) {
@@ -192,6 +203,7 @@ let UsersService = class UsersService {
         return await this.createToken({
             userId: savedUser.userId,
             email: savedUser.email || '',
+            tokenVersion: savedUser.tokenVersion ?? 0,
         });
     }
     async googleLogin(credential) {
@@ -233,6 +245,7 @@ let UsersService = class UsersService {
         const accessToken = await this.createToken({
             userId: user.userId,
             email: user.email || '',
+            tokenVersion: user.tokenVersion ?? 0,
         });
         return {
             accessToken,
@@ -243,8 +256,8 @@ let UsersService = class UsersService {
             email,
         });
     }
-    async createToken({ userId, email, }) {
-        const payload = { user_id: userId, email };
+    async createToken({ userId, email, tokenVersion, }) {
+        const payload = { user_id: userId, email, tv: tokenVersion };
         return await this.jwtService.signAsync(payload);
     }
     async hashPassword(password) {

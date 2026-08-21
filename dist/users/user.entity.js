@@ -23,6 +23,7 @@ let User = class User {
     password;
     authType;
     tempPasswordExpiresAt;
+    tokenVersion;
     createdAt;
     stripeCustomerId;
     active;
@@ -64,6 +65,10 @@ __decorate([
     }),
     __metadata("design:type", Object)
 ], User.prototype, "tempPasswordExpiresAt", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ name: 'token_version', type: 'int', default: 0 }),
+    __metadata("design:type", Number)
+], User.prototype, "tokenVersion", void 0);
 __decorate([
     (0, typeorm_1.CreateDateColumn)({ name: 'create_at', type: 'datetime' }),
     __metadata("design:type", Date)

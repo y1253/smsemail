@@ -29,9 +29,9 @@ let RateLimitGuard = class RateLimitGuard {
         const req = context.switchToHttp().getRequest();
         const now = performance.now();
         this.sweep(now);
-        const ip = req.headers?.['x-forwarded-for']?.split(',')[0]?.trim() ||
-            req.ip ||
+        const ip = (req.headers?.['x-real-ip']?.trim()) ||
             req.socket?.remoteAddress ||
+            req.ip ||
             'unknown';
         const key = `${ip}:${req.method}:${req.route?.path ?? req.url}`;
         const existing = this.hits.get(key);

@@ -10,6 +10,7 @@ export declare class User {
     password: string | null;
     authType: string | null;
     tempPasswordExpiresAt: Date | null;
+    tokenVersion: number;
     createdAt: Date;
     stripeCustomerId: string | null;
     active: number | null;

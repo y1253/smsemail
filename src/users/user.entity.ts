@@ -42,6 +42,16 @@ export class User {
   })
   tempPasswordExpiresAt!: Date | null;
 
+  /**
+   * Bumped whenever every existing session for this user must stop working —
+   * a password change or a password reset. The value is embedded in each JWT
+   * as `tv` and compared on every request, so raising it invalidates tokens
+   * already issued. This is what makes logout-everywhere possible on an
+   * otherwise stateless JWT (ASVS 3.3.3).
+   */
+  @Column({ name: 'token_version', type: 'int', default: 0 })
+  tokenVersion!: number;
+
   @CreateDateColumn({ name: 'create_at', type: 'datetime' })
   createdAt!: Date;
 
