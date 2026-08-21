@@ -54,25 +54,112 @@ const typeorm_2 = require("typeorm");
 const jwt_1 = require("@nestjs/jwt");
 const google_auth_library_1 = require("google-auth-library");
 const bcrypt = __importStar(require("bcrypt"));
+const node_crypto_1 = require("node:crypto");
+const mailer_service_1 = require("../mailer/mailer.service");
+const password_reset_email_1 = require("../mailer/password-reset.email");
+const TEMP_PASSWORD_EXPIRY_MINUTES = 30;
+const TEMP_PASSWORD_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789';
 let UsersService = class UsersService {
     static { UsersService_1 = this; }
     userRepo;
     jwtService;
     googleClient;
-    constructor(userRepo, jwtService, googleClient) {
+    mailer;
+    logger = new common_1.Logger(UsersService_1.name);
+    constructor(userRepo, jwtService, googleClient, mailer) {
         this.userRepo = userRepo;
         this.jwtService = jwtService;
         this.googleClient = googleClient;
+        this.mailer = mailer;
     }
     async getProfile(userId) {
         const user = await this.userRepo.findOne({
             where: { userId },
-            select: ['userId', 'firstName', 'lastName', 'email'],
+            select: ['userId', 'firstName', 'lastName', 'email', 'authType'],
         });
         if (!user) {
             throw new common_1.NotFoundException('User not found');
         }
         return user;
+    }
+    async updateProfile(userId, dto) {
+        const user = await this.userRepo.findOneBy({ userId });
+        if (!user) {
+            throw new common_1.NotFoundException('User not found');
+        }
+        user.firstName = dto.first_name;
+        user.lastName = dto.last_name ?? null;
+        await this.userRepo.save(user);
+        return this.getProfile(userId);
+    }
+    async changePassword(userId, dto) {
+        const user = await this.userRepo.findOneBy({ userId });
+        if (!user) {
+            throw new common_1.NotFoundException('User not found');
+        }
+        if (!user.password) {
+            throw new common_1.BadRequestException('This account signs in with Google');
+        }
+        if (!(await bcrypt.compare(dto.current_password, user.password))) {
+            throw new common_1.UnauthorizedException('Current password is incorrect');
+        }
+        if (dto.current_password === dto.new_password) {
+            throw new common_1.BadRequestException('New password must be different from the current one');
+        }
+        user.password = await this.hashPassword(dto.new_password);
+        user.tempPasswordExpiresAt = null;
+        await this.userRepo.save(user);
+        return { ok: true };
+    }
+    async forgotPassword(email) {
+        const user = await this.getUserByEmail(email);
+        const publicUrl = (process.env.PUBLIC_URL || 'https://emailontext.com').replace(/\/+$/, '');
+        const loginUrl = `${publicUrl}/login`;
+        if (!user || !user.email) {
+            return { ok: true };
+        }
+        if (!user.password) {
+            await this.trySend(user.email, (0, password_reset_email_1.googleAccountEmail)({ firstName: user.firstName, loginUrl }));
+            return { ok: true };
+        }
+        const tempPassword = UsersService_1.generateTempPassword();
+        const sent = await this.trySend(user.email, (0, password_reset_email_1.tempPasswordEmail)({
+            firstName: user.firstName,
+            tempPassword,
+            expiresMinutes: TEMP_PASSWORD_EXPIRY_MINUTES,
+            loginUrl,
+            accountUrl: `${publicUrl}/account`,
+        }));
+        if (!sent) {
+            return { ok: true };
+        }
+        const expiresAt = new Date();
+        expiresAt.setMinutes(expiresAt.getMinutes() + TEMP_PASSWORD_EXPIRY_MINUTES);
+        user.password = await this.hashPassword(tempPassword);
+        user.tempPasswordExpiresAt = expiresAt;
+        await this.userRepo.save(user);
+        return { ok: true };
+    }
+    async trySend(to, content) {
+        try {
+            await this.mailer.sendMail({ to, ...content });
+            return true;
+        }
+        catch (err) {
+            this.logger.error(`Failed to send "${content.subject}": ${err.message}`);
+            return false;
+        }
+    }
+    static generateTempPassword() {
+        const groups = [];
+        for (let g = 0; g < 3; g++) {
+            let group = '';
+            for (let i = 0; i < 4; i++) {
+                group += TEMP_PASSWORD_ALPHABET[(0, node_crypto_1.randomInt)(0, TEMP_PASSWORD_ALPHABET.length)];
+            }
+            groups.push(group);
+        }
+        return groups.join('-');
     }
     async createNewUser(newUser) {
         const { first_name, last_name, email, password, auth_type = 'reg' } = newUser;
@@ -97,6 +184,10 @@ let UsersService = class UsersService {
         const passwordOk = await bcrypt.compare(user.password, hash);
         if (!savedUser || !savedUser.password || !passwordOk) {
             throw new common_1.UnauthorizedException('Invalid password or email');
+        }
+        if (savedUser.tempPasswordExpiresAt &&
+            savedUser.tempPasswordExpiresAt < new Date()) {
+            throw new common_1.UnauthorizedException('This temporary password has expired. Request a new one from the login page.');
         }
         return await this.createToken({
             userId: savedUser.userId,
@@ -167,6 +258,7 @@ exports.UsersService = UsersService = UsersService_1 = __decorate([
     __param(2, (0, common_1.Inject)('GOOGLE_CLIENT')),
     __metadata("design:paramtypes", [typeorm_2.Repository,
         jwt_1.JwtService,
-        google_auth_library_1.OAuth2Client])
+        google_auth_library_1.OAuth2Client,
+        mailer_service_1.MailerService])
 ], UsersService);
 //# sourceMappingURL=users.service.js.map

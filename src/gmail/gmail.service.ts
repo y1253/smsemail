@@ -2,6 +2,7 @@ import { BadRequestException, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { google, gmail_v1 } from 'googleapis';
 import { convert } from 'html-to-text';
+import { stripQuotedText } from '../common/quoted-text.util';
 
 @Injectable()
 export class GmailService {
@@ -126,7 +127,7 @@ export class GmailService {
       (p) => p.filename && p.filename.length > 0,
     ).length;
 
-    const body = this.stripQuotedText(this.extractBody(msg.data.payload));
+    const body = stripQuotedText(this.extractBody(msg.data.payload));
 
     return {
       gmailMessageId: msg.data.id!,
@@ -202,6 +203,19 @@ export class GmailService {
         selectors: [
           { selector: 'a', options: { ignoreHref: true } },
           { selector: 'img', format: 'skip' },
+          // Drop the quoted thread structurally, before it ever becomes text.
+          // A bare <blockquote> is deliberately left alone: its default
+          // formatter emits "> " prefixes, which stripQuotedText handles, and
+          // skipping it would eat real content in non-reply mail.
+          { selector: 'blockquote.gmail_quote', format: 'skip' },
+          { selector: 'div.gmail_quote', format: 'skip' },
+          { selector: 'div.gmail_quote_container', format: 'skip' },
+          { selector: 'blockquote[type="cite"]', format: 'skip' }, // Apple Mail
+          { selector: '.moz-cite-prefix', format: 'skip' }, // Thunderbird
+          { selector: '.protonmail_quote', format: 'skip' },
+          { selector: '.yahoo_quoted', format: 'skip' },
+          { selector: 'div[id^="divRplyFwdMsg"]', format: 'skip' }, // Outlook
+          { selector: '.gmail_signature', format: 'skip' },
         ],
       });
     }
@@ -221,24 +235,6 @@ export class GmailService {
       if (found) return found;
     }
     return null;
-  }
-
-  private stripQuotedText(body: string): string {
-    const lines = body.split('\n');
-    const result: string[] = [];
-    let prevStartedWithOn = false;
-    for (const line of lines) {
-      const trimmed = line.trim();
-      if (/^[-_]{4,}/.test(trimmed)) break;
-      if (line.trimStart().startsWith('>')) { prevStartedWithOn = false; continue; }
-      // Multi-line "On ... wrote:" — previous line started with "On" and this ends with "wrote:"
-      if (prevStartedWithOn && /wrote:\s*$/.test(trimmed)) { result.pop(); break; }
-      // Single-line "On ... wrote:"
-      if (/^On .+wrote:\s*$/.test(trimmed)) break;
-      prevStartedWithOn = /^On /.test(trimmed);
-      result.push(line);
-    }
-    return result.join('\n').trim();
   }
 
   // The parent's References chain plus the parent itself. Guard against a

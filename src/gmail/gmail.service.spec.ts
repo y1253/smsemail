@@ -2,11 +2,17 @@ import { GmailService } from './gmail.service';
 
 const send = jest.fn().mockResolvedValue({ data: {} });
 const historyList = jest.fn().mockResolvedValue({ data: {} });
+const messagesGet = jest.fn();
 
 jest.mock('googleapis', () => ({
   google: {
     auth: { OAuth2: jest.fn().mockImplementation(() => ({ setCredentials: jest.fn() })) },
-    gmail: () => ({ users: { messages: { send }, history: { list: historyList } } }),
+    gmail: () => ({
+      users: {
+        messages: { send, get: messagesGet },
+        history: { list: historyList },
+      },
+    }),
   },
 }));
 
@@ -169,5 +175,72 @@ describe('GmailService.getNewMessages', () => {
 
     await expect(makeService().getNewMessages('tok', '100')).resolves.toEqual([]);
     expect(historyList).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('GmailService.fetchMessage body extraction', () => {
+  const b64 = (t: string) => Buffer.from(t, 'utf-8').toString('base64url');
+
+  /** Minimal messages.get response carrying a single body part. */
+  function mockMessage(mimeType: string, content: string) {
+    messagesGet.mockResolvedValue({
+      data: {
+        id: 'gm-1',
+        threadId: 'th-1',
+        labelIds: ['INBOX'],
+        payload: {
+          mimeType,
+          headers: [
+            { name: 'From', value: 'John Doe <john@example.com>' },
+            { name: 'Subject', value: 'Re: Thursday' },
+          ],
+          body: { data: b64(content) },
+        },
+      },
+    });
+  }
+
+  beforeEach(() => messagesGet.mockReset());
+
+  it('drops the quoted thread from a plain-text reply', async () => {
+    mockMessage(
+      'text/plain',
+      [
+        'Sounds good, see you Thursday at 3.',
+        '',
+        'On Wed, Aug 19, 2026 at 10:15 AM John Doe <john@example.com> wrote:',
+        '',
+        '> Are you free Thursday afternoon?',
+      ].join('\n'),
+    );
+
+    const msg = await makeService().fetchMessage('tok', 'gm-1');
+    expect(msg.body).toBe('Sounds good, see you Thursday at 3.');
+  });
+
+  it('drops the Gmail quote container from an html-only reply', async () => {
+    mockMessage(
+      'text/html',
+      '<div dir="ltr">Sounds good, see you Thursday at 3.</div><br>' +
+        '<div class="gmail_quote gmail_quote_container">' +
+        '<div dir="ltr" class="gmail_attr">On Wed, Aug 19, 2026 at 10:15 AM John Doe wrote:<br></div>' +
+        '<blockquote class="gmail_quote"><div dir="ltr">Are you free Thursday afternoon?</div></blockquote>' +
+        '</div>',
+    );
+
+    const msg = await makeService().fetchMessage('tok', 'gm-1');
+    expect(msg.body).toBe('Sounds good, see you Thursday at 3.');
+  });
+
+  it('drops the Outlook header block from an html-only reply', async () => {
+    mockMessage(
+      'text/html',
+      '<div>Approved. Go ahead and book it.</div><div id="appendonsend"></div><hr>' +
+        '<div id="divRplyFwdMsg" dir="ltr"><b>From:</b> John Doe<br><b>Sent:</b> Wednesday<br></div>' +
+        '<br><div>The venue needs a $500 deposit by Friday.</div>',
+    );
+
+    const msg = await makeService().fetchMessage('tok', 'gm-1');
+    expect(msg.body).toBe('Approved. Go ahead and book it.');
   });
 });

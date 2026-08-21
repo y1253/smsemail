@@ -26,7 +26,6 @@ export declare class GmailService {
     sendEmail(refreshToken: string, from: string, to: string, subject: string, body: string): Promise<void>;
     private extractBody;
     private findPartData;
-    private stripQuotedText;
     private buildReferences;
     private sanitizeHeader;
     private buildRaw;

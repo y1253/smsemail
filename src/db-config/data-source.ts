@@ -23,6 +23,10 @@ dotenv.config();
 
 export default new DataSource({
   type: 'mysql',
+  // Same driver the running app uses (db-config.module.ts). Without this
+  // TypeORM loads the legacy `mysql` package, which cannot speak
+  // caching_sha2_password and fails the handshake with ER_NOT_SUPPORTED_AUTH_MODE.
+  driver: require('mysql2'),
   host: process.env.DB_HOST,
   port: Number(process.env.DB_PORT ?? 3306),
   username: process.env.DB_USER,

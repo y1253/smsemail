@@ -11,6 +11,7 @@ import { CcModule } from './cc/cc.module';
 import { BillingModule } from './billing/billing.module';
 import { EmailsModule } from './emails/emails.module';
 import { SignalwireModule } from './signalwire/signalwire.module';
+import { MailerModule } from './mailer/mailer.module';
 import { PhonesModule } from './phones/phones.module';
 import { SetsModule } from './sets/sets.module';
 import { WebhooksModule } from './webhooks/webhooks.module';
@@ -25,6 +26,7 @@ import { validateEnv } from './common/env.validation';
     DbConfigModule,
     ScheduleModule.forRoot(),
     SignalwireModule,
+    MailerModule,
     UsersModule,
     CcModule,
     BillingModule,

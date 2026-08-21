@@ -22,6 +22,7 @@ let User = class User {
     email;
     password;
     authType;
+    tempPasswordExpiresAt;
     createdAt;
     stripeCustomerId;
     active;
@@ -55,6 +56,14 @@ __decorate([
     (0, typeorm_1.Column)({ name: 'auth_type', type: 'varchar', length: 45, nullable: true }),
     __metadata("design:type", Object)
 ], User.prototype, "authType", void 0);
+__decorate([
+    (0, typeorm_1.Column)({
+        name: 'temp_password_expires_at',
+        type: 'datetime',
+        nullable: true,
+    }),
+    __metadata("design:type", Object)
+], User.prototype, "tempPasswordExpiresAt", void 0);
 __decorate([
     (0, typeorm_1.CreateDateColumn)({ name: 'create_at', type: 'datetime' }),
     __metadata("design:type", Date)

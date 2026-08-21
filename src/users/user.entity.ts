@@ -30,6 +30,18 @@ export class User {
   @Column({ name: 'auth_type', type: 'varchar', length: 45, nullable: true })
   authType!: string | null;
 
+  /**
+   * Set when `password` holds a temporary one emailed by the forgot-password
+   * flow; login rejects it past this instant. NULL means a normal, permanent
+   * password — changePassword clears it back to NULL.
+   */
+  @Column({
+    name: 'temp_password_expires_at',
+    type: 'datetime',
+    nullable: true,
+  })
+  tempPasswordExpiresAt!: Date | null;
+
   @CreateDateColumn({ name: 'create_at', type: 'datetime' })
   createdAt!: Date;
 

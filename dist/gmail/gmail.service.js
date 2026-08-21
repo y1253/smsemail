@@ -14,6 +14,7 @@ const common_1 = require("@nestjs/common");
 const config_1 = require("@nestjs/config");
 const googleapis_1 = require("googleapis");
 const html_to_text_1 = require("html-to-text");
+const quoted_text_util_1 = require("../common/quoted-text.util");
 let GmailService = class GmailService {
     config;
     constructor(config) {
@@ -87,7 +88,7 @@ let GmailService = class GmailService {
         const subject = getHeader('Subject');
         const labels = msg.data.labelIds ?? [];
         const attachmentCount = (msg.data.payload?.parts ?? []).filter((p) => p.filename && p.filename.length > 0).length;
-        const body = this.stripQuotedText(this.extractBody(msg.data.payload));
+        const body = (0, quoted_text_util_1.stripQuotedText)(this.extractBody(msg.data.payload));
         return {
             gmailMessageId: msg.data.id,
             gmailThreadId: msg.data.threadId,
@@ -134,6 +135,15 @@ let GmailService = class GmailService {
                 selectors: [
                     { selector: 'a', options: { ignoreHref: true } },
                     { selector: 'img', format: 'skip' },
+                    { selector: 'blockquote.gmail_quote', format: 'skip' },
+                    { selector: 'div.gmail_quote', format: 'skip' },
+                    { selector: 'div.gmail_quote_container', format: 'skip' },
+                    { selector: 'blockquote[type="cite"]', format: 'skip' },
+                    { selector: '.moz-cite-prefix', format: 'skip' },
+                    { selector: '.protonmail_quote', format: 'skip' },
+                    { selector: '.yahoo_quoted', format: 'skip' },
+                    { selector: 'div[id^="divRplyFwdMsg"]', format: 'skip' },
+                    { selector: '.gmail_signature', format: 'skip' },
                 ],
             });
         }
@@ -149,29 +159,6 @@ let GmailService = class GmailService {
                 return found;
         }
         return null;
-    }
-    stripQuotedText(body) {
-        const lines = body.split('\n');
-        const result = [];
-        let prevStartedWithOn = false;
-        for (const line of lines) {
-            const trimmed = line.trim();
-            if (/^[-_]{4,}/.test(trimmed))
-                break;
-            if (line.trimStart().startsWith('>')) {
-                prevStartedWithOn = false;
-                continue;
-            }
-            if (prevStartedWithOn && /wrote:\s*$/.test(trimmed)) {
-                result.pop();
-                break;
-            }
-            if (/^On .+wrote:\s*$/.test(trimmed))
-                break;
-            prevStartedWithOn = /^On /.test(trimmed);
-            result.push(line);
-        }
-        return result.join('\n').trim();
     }
     buildReferences(chain, inReplyTo) {
         const ids = (chain ?? '').split(/\s+/).filter(Boolean);

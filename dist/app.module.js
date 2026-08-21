@@ -20,6 +20,7 @@ const cc_module_1 = require("./cc/cc.module");
 const billing_module_1 = require("./billing/billing.module");
 const emails_module_1 = require("./emails/emails.module");
 const signalwire_module_1 = require("./signalwire/signalwire.module");
+const mailer_module_1 = require("./mailer/mailer.module");
 const phones_module_1 = require("./phones/phones.module");
 const sets_module_1 = require("./sets/sets.module");
 const webhooks_module_1 = require("./webhooks/webhooks.module");
@@ -37,6 +38,7 @@ exports.AppModule = AppModule = __decorate([
             db_config_module_1.DbConfigModule,
             schedule_1.ScheduleModule.forRoot(),
             signalwire_module_1.SignalwireModule,
+            mailer_module_1.MailerModule,
             users_module_1.UsersModule,
             cc_module_1.CcModule,
             billing_module_1.BillingModule,

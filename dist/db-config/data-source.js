@@ -52,6 +52,7 @@ const deleted_phone_entity_1 = require("../phones/deleted-phone.entity");
 dotenv.config();
 exports.default = new typeorm_1.DataSource({
     type: 'mysql',
+    driver: require('mysql2'),
     host: process.env.DB_HOST,
     port: Number(process.env.DB_PORT ?? 3306),
     username: process.env.DB_USER,
