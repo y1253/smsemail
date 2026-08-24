@@ -61,12 +61,23 @@ let MailerService = MailerService_1 = class MailerService {
             this.transport = nodemailer.createTransport({
                 service: 'gmail',
                 auth: { user, pass },
+                connectionTimeout: 10_000,
+                greetingTimeout: 10_000,
+                socketTimeout: 20_000,
             });
         }
         else {
             this.transport = null;
             this.logger.warn('APP_PASSWORD is not set — outbound email is disabled. See server/.env.example.');
         }
+    }
+    onModuleInit() {
+        if (!this.transport)
+            return;
+        void this.transport
+            .verify()
+            .then(() => this.logger.log('SMTP credentials verified'))
+            .catch((err) => this.logger.error(`SMTP credentials rejected — password email will silently fail to send: ${err.message}`));
     }
     async sendMail({ to, subject, html, text }) {
         if (!this.transport) {
