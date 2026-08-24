@@ -59,7 +59,10 @@ let MailerService = MailerService_1 = class MailerService {
         this.from = `EmailOnText <${user}>`;
         if (pass) {
             this.transport = nodemailer.createTransport({
-                service: 'gmail',
+                host: 'smtp.gmail.com',
+                port: 587,
+                secure: false,
+                requireTLS: true,
                 auth: { user, pass },
                 connectionTimeout: 10_000,
                 greetingTimeout: 10_000,

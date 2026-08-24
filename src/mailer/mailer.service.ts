@@ -38,7 +38,17 @@ export class MailerService implements OnModuleInit {
 
     if (pass) {
       this.transport = nodemailer.createTransport({
-        service: 'gmail',
+        // Explicit host/port rather than `service: 'gmail'`, whose well-known
+        // entry is port 465 with implicit TLS. Hetzner blocks outbound 25, 465
+        // and 2525 on this account and leaves only 587 open, so the shortcut
+        // dials the one port that cannot connect — every password email failed
+        // with "Connection timeout". 587 is STARTTLS, hence secure: false: the
+        // socket opens in the clear and is upgraded before AUTH, so the
+        // credentials still never cross the wire unencrypted.
+        host: 'smtp.gmail.com',
+        port: 587,
+        secure: false,
+        requireTLS: true,
         auth: { user, pass },
         // Nodemailer's defaults are 2min / 30s / 10min. A stalled Gmail socket
         // would hold the HTTP request open far past nginx's proxy_read_timeout,
