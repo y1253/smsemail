@@ -5,6 +5,7 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  ServiceUnavailableException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -17,10 +18,7 @@ import { randomInt } from 'node:crypto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { MailerService } from '../mailer/mailer.service';
-import {
-  googleAccountEmail,
-  tempPasswordEmail,
-} from '../mailer/password-reset.email';
+import { tempPasswordEmail } from '../mailer/password-reset.email';
 
 type JwtPayload = {
   user_id: number;
@@ -146,9 +144,15 @@ export class UsersService {
   /**
    * Email a temporary password to the owner of `email`.
    *
-   * Always resolves to `{ ok: true }` — including for unknown addresses and
-   * for send failures — so the endpoint can't be used to enumerate accounts
-   * (ASVS 2.2.2, the same reasoning as DUMMY_HASH in login).
+   * Each outcome is reported distinctly so the page can tell the user what
+   * actually happened rather than leaving them waiting on mail that will never
+   * arrive: 404 for an unknown address, 400 for a Google-only account, 503 when
+   * the send itself fails.
+   *
+   * Distinguishing those does let a caller confirm whether an address is
+   * registered. That is bounded by the route's 3-per-15-minutes rate limit, and
+   * `POST /users/create` already discloses the same fact through its 409, so it
+   * is not a capability this endpoint adds.
    */
   async forgotPassword(email: string): Promise<{ ok: true }> {
     const user = await this.getUserByEmail(email);
@@ -158,17 +162,16 @@ export class UsersService {
     const loginUrl = `${publicUrl}/login`;
 
     if (!user || !user.email) {
-      return { ok: true };
+      throw new NotFoundException('No account found for that email address.');
     }
 
     // Google-only rows have no hash to replace. Same rule changePassword
-    // enforces — tell them where to sign in instead of silently doing nothing.
+    // enforces — say so on screen rather than mailing an explanation they have
+    // to go and read.
     if (!user.password) {
-      await this.trySend(
-        user.email,
-        googleAccountEmail({ firstName: user.firstName, loginUrl }),
+      throw new BadRequestException(
+        'This account signs in with Google. Use the Google button on the sign-in page.',
       );
-      return { ok: true };
     }
 
     const tempPassword = UsersService.generateTempPassword();
@@ -187,7 +190,11 @@ export class UsersService {
     );
 
     if (!sent) {
-      return { ok: true };
+      // Thrown as an HttpException so the wording survives AllExceptionsFilter,
+      // which masks anything else into a generic 500.
+      throw new ServiceUnavailableException(
+        "We couldn't send the email right now. Please try again in a moment.",
+      );
     }
 
     const expiresAt = new Date();
@@ -204,7 +211,11 @@ export class UsersService {
     return { ok: true };
   }
 
-  /** Send, swallowing failures into `false` so callers stay non-enumerating. */
+  /**
+   * Send, turning a failure into `false` rather than an exception, so the
+   * caller can decide what the user is told and — critically — skip the
+   * password rewrite that would otherwise lock them out.
+   */
   private async trySend(
     to: string,
     content: { subject: string; html: string; text: string },

@@ -123,11 +123,10 @@ let UsersService = class UsersService {
         const publicUrl = (process.env.PUBLIC_URL || 'https://emailontext.com').replace(/\/+$/, '');
         const loginUrl = `${publicUrl}/login`;
         if (!user || !user.email) {
-            return { ok: true };
+            throw new common_1.NotFoundException('No account found for that email address.');
         }
         if (!user.password) {
-            await this.trySend(user.email, (0, password_reset_email_1.googleAccountEmail)({ firstName: user.firstName, loginUrl }));
-            return { ok: true };
+            throw new common_1.BadRequestException('This account signs in with Google. Use the Google button on the sign-in page.');
         }
         const tempPassword = UsersService_1.generateTempPassword();
         const sent = await this.trySend(user.email, (0, password_reset_email_1.tempPasswordEmail)({
@@ -138,7 +137,7 @@ let UsersService = class UsersService {
             accountUrl: `${publicUrl}/account`,
         }));
         if (!sent) {
-            return { ok: true };
+            throw new common_1.ServiceUnavailableException("We couldn't send the email right now. Please try again in a moment.");
         }
         const expiresAt = new Date();
         expiresAt.setMinutes(expiresAt.getMinutes() + TEMP_PASSWORD_EXPIRY_MINUTES);

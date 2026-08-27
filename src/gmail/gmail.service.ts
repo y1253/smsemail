@@ -1,7 +1,7 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { google, gmail_v1 } from 'googleapis';
-import { convert } from 'html-to-text';
+import { htmlToText, looksLikeHtml, stripStrayMarkup } from '../common/html.util';
 import { stripQuotedText } from '../common/quoted-text.util';
 
 @Injectable()
@@ -190,37 +190,25 @@ export class GmailService {
   private extractBody(payload: gmail_v1.Schema$MessagePart | undefined): string {
     if (!payload) return '';
 
-    const plainData = this.findPartData(payload, 'text/plain');
-    if (plainData) {
-      return Buffer.from(plainData, 'base64').toString('utf-8');
-    }
+    const plain = this.decodePart(this.findPartData(payload, 'text/plain'));
+    const html = this.decodePart(this.findPartData(payload, 'text/html'));
 
-    const htmlData = this.findPartData(payload, 'text/html');
-    if (htmlData) {
-      const rawHtml = Buffer.from(htmlData, 'base64').toString('utf-8');
-      return convert(rawHtml, {
-        wordwrap: false,
-        selectors: [
-          { selector: 'a', options: { ignoreHref: true } },
-          { selector: 'img', format: 'skip' },
-          // Drop the quoted thread structurally, before it ever becomes text.
-          // A bare <blockquote> is deliberately left alone: its default
-          // formatter emits "> " prefixes, which stripQuotedText handles, and
-          // skipping it would eat real content in non-reply mail.
-          { selector: 'blockquote.gmail_quote', format: 'skip' },
-          { selector: 'div.gmail_quote', format: 'skip' },
-          { selector: 'div.gmail_quote_container', format: 'skip' },
-          { selector: 'blockquote[type="cite"]', format: 'skip' }, // Apple Mail
-          { selector: '.moz-cite-prefix', format: 'skip' }, // Thunderbird
-          { selector: '.protonmail_quote', format: 'skip' },
-          { selector: '.yahoo_quoted', format: 'skip' },
-          { selector: 'div[id^="divRplyFwdMsg"]', format: 'skip' }, // Outlook
-          { selector: '.gmail_signature', format: 'skip' },
-        ],
-      });
-    }
+    // Genuine plain text: the common case, and the best source we have.
+    if (plain.trim() && !looksLikeHtml(plain)) return stripStrayMarkup(plain);
+
+    // The "plain" part is really markup — some bulk mailers mislabel it, and
+    // sending it on untouched is how a raw "<!doctype html>" reached an SMS.
+    // Prefer the properly-labelled html part when there is one: it is the
+    // better-formed copy of the same content.
+    if (html.trim()) return htmlToText(html);
+    if (plain.trim()) return htmlToText(plain);
 
     return '';
+  }
+
+  private decodePart(data: string | null): string {
+    if (!data) return '';
+    return Buffer.from(data, 'base64url').toString('utf-8');
   }
 
   private findPartData(
@@ -231,6 +219,11 @@ export class GmailService {
       return payload.body.data;
     }
     for (const part of payload.parts ?? []) {
+      // An attachment is never the body, and an attached/forwarded mail brings
+      // its own text/plain part that must not outrank ours.
+      if (part.filename) continue;
+      if (part.mimeType === 'message/rfc822') continue;
+
       const found = this.findPartData(part, mimeType);
       if (found) return found;
     }

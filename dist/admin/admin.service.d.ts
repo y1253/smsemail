@@ -40,6 +40,7 @@ export declare class AdminService {
         pendingCancelAt: Date | null;
         pendingCancelCount: number;
         promoCount: number;
+        cancelledCount: number;
         subscriptionsError: string | null;
         emails: string[];
         phones: string[];

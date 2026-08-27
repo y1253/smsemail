@@ -32,6 +32,7 @@ const emails_service_1 = require("../emails/emails.service");
 const gmail_service_1 = require("../gmail/gmail.service");
 const openai_service_1 = require("../openai/openai.service");
 const signalwire_service_1 = require("../signalwire/signalwire.service");
+const billing_service_1 = require("../billing/billing.service");
 const text_util_1 = require("../common/text.util");
 const id_util_1 = require("../common/id.util");
 let WebhooksService = class WebhooksService {
@@ -46,12 +47,13 @@ let WebhooksService = class WebhooksService {
     gmailService;
     openAiService;
     signalwireService;
+    billing;
     static SMS_LIMIT = 160;
     static MESSAGE_RETENTION_DAYS = 30;
     logger = new common_1.Logger(WebhooksService_1.name);
     stripe;
     pushChains = new Map();
-    constructor(emailRepo, phoneRepo, setRepo, incomeMessageRepo, pendingRepo, config, emailsService, gmailService, openAiService, signalwireService) {
+    constructor(emailRepo, phoneRepo, setRepo, incomeMessageRepo, pendingRepo, config, emailsService, gmailService, openAiService, signalwireService, billing) {
         this.emailRepo = emailRepo;
         this.phoneRepo = phoneRepo;
         this.setRepo = setRepo;
@@ -62,6 +64,7 @@ let WebhooksService = class WebhooksService {
         this.gmailService = gmailService;
         this.openAiService = openAiService;
         this.signalwireService = signalwireService;
+        this.billing = billing;
         const key = this.config.get('STRIPE_TEST_KEY');
         if (!key)
             throw new Error('STRIPE_TEST_KEY is not set');
@@ -385,7 +388,7 @@ Reply STOP to unsubscribe`);
             return;
         }
         const subscriptionId = event.type === 'invoice.payment_failed'
-            ? event.data.object.subscription
+            ? this.billing.resolveInvoiceSubscriptionId(event.data.object)
             : event.data.object.id;
         if (!subscriptionId)
             return;
@@ -517,6 +520,7 @@ exports.WebhooksService = WebhooksService = WebhooksService_1 = __decorate([
         emails_service_1.EmailsService,
         gmail_service_1.GmailService,
         openai_service_1.OpenAiService,
-        signalwire_service_1.SignalwireService])
+        signalwire_service_1.SignalwireService,
+        billing_service_1.BillingService])
 ], WebhooksService);
 //# sourceMappingURL=webhooks.service.js.map

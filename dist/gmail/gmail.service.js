@@ -13,7 +13,7 @@ exports.GmailService = void 0;
 const common_1 = require("@nestjs/common");
 const config_1 = require("@nestjs/config");
 const googleapis_1 = require("googleapis");
-const html_to_text_1 = require("html-to-text");
+const html_util_1 = require("../common/html.util");
 const quoted_text_util_1 = require("../common/quoted-text.util");
 let GmailService = class GmailService {
     config;
@@ -123,37 +123,30 @@ let GmailService = class GmailService {
     extractBody(payload) {
         if (!payload)
             return '';
-        const plainData = this.findPartData(payload, 'text/plain');
-        if (plainData) {
-            return Buffer.from(plainData, 'base64').toString('utf-8');
-        }
-        const htmlData = this.findPartData(payload, 'text/html');
-        if (htmlData) {
-            const rawHtml = Buffer.from(htmlData, 'base64').toString('utf-8');
-            return (0, html_to_text_1.convert)(rawHtml, {
-                wordwrap: false,
-                selectors: [
-                    { selector: 'a', options: { ignoreHref: true } },
-                    { selector: 'img', format: 'skip' },
-                    { selector: 'blockquote.gmail_quote', format: 'skip' },
-                    { selector: 'div.gmail_quote', format: 'skip' },
-                    { selector: 'div.gmail_quote_container', format: 'skip' },
-                    { selector: 'blockquote[type="cite"]', format: 'skip' },
-                    { selector: '.moz-cite-prefix', format: 'skip' },
-                    { selector: '.protonmail_quote', format: 'skip' },
-                    { selector: '.yahoo_quoted', format: 'skip' },
-                    { selector: 'div[id^="divRplyFwdMsg"]', format: 'skip' },
-                    { selector: '.gmail_signature', format: 'skip' },
-                ],
-            });
-        }
+        const plain = this.decodePart(this.findPartData(payload, 'text/plain'));
+        const html = this.decodePart(this.findPartData(payload, 'text/html'));
+        if (plain.trim() && !(0, html_util_1.looksLikeHtml)(plain))
+            return (0, html_util_1.stripStrayMarkup)(plain);
+        if (html.trim())
+            return (0, html_util_1.htmlToText)(html);
+        if (plain.trim())
+            return (0, html_util_1.htmlToText)(plain);
         return '';
+    }
+    decodePart(data) {
+        if (!data)
+            return '';
+        return Buffer.from(data, 'base64url').toString('utf-8');
     }
     findPartData(payload, mimeType) {
         if (payload.mimeType === mimeType && payload.body?.data) {
             return payload.body.data;
         }
         for (const part of payload.parts ?? []) {
+            if (part.filename)
+                continue;
+            if (part.mimeType === 'message/rfc822')
+                continue;
             const found = this.findPartData(part, mimeType);
             if (found)
                 return found;

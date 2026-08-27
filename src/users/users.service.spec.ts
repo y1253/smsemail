@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   NotFoundException,
+  ServiceUnavailableException,
   UnauthorizedException,
 } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
@@ -159,9 +160,10 @@ describe('UsersService password + profile', () => {
     });
   });
 
-  // The forgot-password guarantee: the response is identical no matter what
-  // the address turns out to be, and the stored hash is only replaced once the
-  // email carrying its plaintext has actually gone out.
+  // The forgot-password guarantees: every outcome the user could be waiting on
+  // is reported distinctly rather than collapsed into one ok, and the stored
+  // hash is only replaced once the email carrying its plaintext has actually
+  // gone out — a failed send must never leave someone locked out.
   describe('forgotPassword', () => {
     /** Pull the temp password back out of the email the service built. */
     function sentPassword(mailer: { sendMail: jest.Mock }): string {
@@ -171,12 +173,12 @@ describe('UsersService password + profile', () => {
       return match![1];
     }
 
-    it('returns ok and sends nothing for an unknown address', async () => {
+    it('reports an unknown address instead of pretending to send', async () => {
       const { svc, userRepo, mailer } = build(null);
 
-      await expect(svc.forgotPassword('nobody@example.com')).resolves.toEqual({
-        ok: true,
-      });
+      await expect(svc.forgotPassword('nobody@example.com')).rejects.toThrow(
+        NotFoundException,
+      );
 
       expect(mailer.sendMail).not.toHaveBeenCalled();
       expect(userRepo.save).not.toHaveBeenCalled();
@@ -224,14 +226,12 @@ describe('UsersService password + profile', () => {
       const user = await passwordUser({ authType: 'google', password: null });
       const { svc, userRepo, mailer } = build(user);
 
-      await expect(svc.forgotPassword(user.email)).resolves.toEqual({
-        ok: true,
-      });
-
-      expect(mailer.sendMail).toHaveBeenCalledTimes(1);
-      expect(mailer.sendMail.mock.calls[0][0].text).toContain(
-        'Sign in with Google',
+      await expect(svc.forgotPassword(user.email)).rejects.toThrow(
+        BadRequestException,
       );
+
+      // Said on screen, not mailed — there is nothing to deliver.
+      expect(mailer.sendMail).not.toHaveBeenCalled();
       // No hash written — the account still has no password at all.
       expect(userRepo.save).not.toHaveBeenCalled();
     });
@@ -242,11 +242,12 @@ describe('UsersService password + profile', () => {
       const { svc, userRepo, mailer } = build(user);
       mailer.sendMail.mockRejectedValue(new Error('smtp down'));
 
-      // Still ok:true — a send failure must not become an enumeration signal.
-      await expect(svc.forgotPassword(user.email)).resolves.toEqual({
-        ok: true,
-      });
+      await expect(svc.forgotPassword(user.email)).rejects.toThrow(
+        ServiceUnavailableException,
+      );
 
+      // The invariant that matters: nothing was written, so the password the
+      // user already has still works and they are not locked out.
       expect(userRepo.save).not.toHaveBeenCalled();
       expect(user.password).toBe(oldHash);
     });

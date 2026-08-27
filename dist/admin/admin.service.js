@@ -77,17 +77,17 @@ let AdminService = AdminService_1 = class AdminService {
             .leftJoinAndSelect('user.phones', 'phone', 'phone.deleted_at IS NULL')
             .orderBy('user.create_at', 'DESC')
             .getMany();
-        const liveSets = await this.setRepo
+        const allSets = await this.setRepo
             .createQueryBuilder('set')
             .innerJoin('set.email', 'email')
             .select('email.user_id', 'userId')
             .addSelect('set.set_id', 'setId')
             .addSelect('set.stripe_subscription_id', 'stripeSubscriptionId')
             .addSelect('set.pending_cancel_at', 'pendingCancelAt')
-            .where('set.deleted_at IS NULL')
+            .addSelect('set.deleted_at', 'deletedAt')
             .getRawMany();
         const setsByUser = new Map();
-        for (const row of liveSets) {
+        for (const row of allSets) {
             const key = Number(row.userId);
             const list = setsByUser.get(key);
             if (list)
@@ -105,12 +105,14 @@ let AdminService = AdminService_1 = class AdminService {
                     : null;
                 return {
                     promo,
+                    live: !row.deletedAt,
                     ...this.billingService.describeSubscription(sub, {
-                        deletedAt: null,
+                        deletedAt: row.deletedAt,
                         pendingCancelAt: row.pendingCancelAt,
                     }),
                 };
             });
+            const live = states.filter((s) => s.live);
             return {
                 userId: u.userId,
                 name: [u.firstName, u.lastName].filter(Boolean).join(' ') || '—',
@@ -118,12 +120,13 @@ let AdminService = AdminService_1 = class AdminService {
                 authType: u.authType,
                 createdAt: u.createdAt,
                 active: u.active,
-                setCount: mine.length,
-                nextRenewalAt: earliestRenewal(states),
-                pendingCancelAt: earliestEnd(states),
-                pendingCancelCount: states.filter((s) => s.status === 'pending_cancel')
+                setCount: live.length,
+                nextRenewalAt: earliestRenewal(live),
+                pendingCancelAt: earliestEnd(live),
+                pendingCancelCount: live.filter((s) => s.status === 'pending_cancel')
                     .length,
-                promoCount: states.filter((s) => s.promo).length,
+                promoCount: live.filter((s) => s.promo).length,
+                cancelledCount: states.filter((s) => s.status === 'cancelled').length,
                 subscriptionsError,
                 emails: u.emails.map((e) => e.email),
                 phones: u.phones.map((p) => p.phone),

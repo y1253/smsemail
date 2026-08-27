@@ -18,6 +18,7 @@ const pending_sms_command_entity_1 = require("./pending-sms-command.entity");
 const emails_module_1 = require("../emails/emails.module");
 const gmail_module_1 = require("../gmail/gmail.module");
 const openai_module_1 = require("../openai/openai.module");
+const billing_module_1 = require("../billing/billing.module");
 const webhooks_service_1 = require("./webhooks.service");
 const webhook_security_service_1 = require("./webhook-security.service");
 const webhooks_controller_1 = require("./webhooks.controller");
@@ -31,6 +32,7 @@ exports.WebhooksModule = WebhooksModule = __decorate([
             emails_module_1.EmailsModule,
             gmail_module_1.GmailModule,
             openai_module_1.OpenAiModule,
+            billing_module_1.BillingModule,
         ],
         controllers: [webhooks_controller_1.WebhooksController],
         providers: [webhooks_service_1.WebhooksService, webhook_security_service_1.WebhookSecurityService],

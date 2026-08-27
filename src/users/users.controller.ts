@@ -60,7 +60,10 @@ export class UsersController {
 
   // Public by design, and tighter than /login: every accepted call sends real
   // mail and rewrites a password, so a loose limit is both a spam vector and a
-  // way to lock someone out by repeatedly resetting them.
+  // way to lock someone out by repeatedly resetting them. Since the handler
+  // distinguishes an unknown address (404) from a real one, this limit is also
+  // the only thing bounding how fast the endpoint can be walked for account
+  // enumeration — do not loosen it.
   @Post('forgot-password')
   @RateLimit({ limit: 3, windowMs: 15 * 60_000 })
   async forgotPassword(@Body() body: ForgotPasswordDto) {

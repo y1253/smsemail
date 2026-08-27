@@ -1,7 +1,8 @@
 import { BadRequestException, Inject, Injectable, Logger, forwardRef } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, IsNull } from 'typeorm';
+import { Repository, IsNull, Not } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
+import { Cron } from '@nestjs/schedule';
 import Stripe from 'stripe';
 import { User } from '../users/user.entity';
 import { Email } from '../emails/email.entity';
@@ -11,11 +12,25 @@ import { SetAllowedSender } from './set-allowed-sender.entity';
 import { EmailsService } from '../emails/emails.service';
 import { GmailService } from '../gmail/gmail.service';
 import { SignalwireService } from '../signalwire/signalwire.service';
+import { BillingService } from '../billing/billing.service';
 
 @Injectable()
 export class SetsService {
   private readonly stripe: Stripe;
   private readonly logger = new Logger(SetsService.name);
+
+  /**
+   * Stripe statuses a subscription never comes back from. `past_due` is
+   * deliberately absent — Stripe is still retrying the charge there.
+   */
+  private static readonly TERMINAL_STRIPE_STATUSES: string[] = [
+    'canceled',
+    'incomplete_expired',
+    'unpaid',
+  ];
+
+  private static readonly CANCELLED_NOTICE =
+    'Your subscription was cancelled — SMS email forwarding has been stopped.';
 
   constructor(
     @InjectRepository(User)
@@ -33,6 +48,7 @@ export class SetsService {
     private readonly emailsService: EmailsService,
     private readonly gmailService: GmailService,
     private readonly signalwireService: SignalwireService,
+    private readonly billing: BillingService,
   ) {
     const key = this.config.get<string>('STRIPE_TEST_KEY');
     if (!key) throw new Error('STRIPE_TEST_KEY is not set');
@@ -74,9 +90,18 @@ export class SetsService {
    * Cancel the set's Stripe subscription, stop the Gmail watch, and soft-delete
    * the set. Errors from Stripe/Gmail are logged but never block the soft-delete.
    * The set must be loaded with its `email` relation.
+   *
+   * `cancelStripe: false` skips the Stripe call. Used by the nightly
+   * reconciliation, where Stripe already reports the subscription terminal and
+   * cancelling it again would just log "No such subscription" every night.
    */
-  private async teardownSet(set: EmailPhoneSet): Promise<void> {
-    if (set.stripeSubscriptionId && set.stripeSubscriptionId !== 'PROMO') {
+  private async teardownSet(
+    set: EmailPhoneSet,
+    opts: { cancelStripe?: boolean } = {},
+  ): Promise<void> {
+    const { cancelStripe = true } = opts;
+
+    if (cancelStripe && set.stripeSubscriptionId && set.stripeSubscriptionId !== 'PROMO') {
       try {
         await this.stripe.subscriptions.cancel(set.stripeSubscriptionId);
       } catch (err) {
@@ -84,7 +109,9 @@ export class SetsService {
       }
     }
 
-    if (set.email?.refreshToken) {
+    // Only the last set on a mailbox may stop its watch: one email can feed
+    // several phones, and unwatching would silently break the other sets.
+    if (set.email?.refreshToken && (await this.isLastSetForEmail(set))) {
       try {
         const refreshToken = this.emailsService.decrypt(set.email.refreshToken);
         await this.gmailService.unwatchGmail(refreshToken);
@@ -96,6 +123,18 @@ export class SetsService {
     set.deletedAt = new Date();
     set.pendingCancelAt = null;
     await this.setRepo.save(set);
+  }
+
+  /** True when no other live set points at the same email. */
+  private async isLastSetForEmail(set: EmailPhoneSet): Promise<boolean> {
+    const others = await this.setRepo.count({
+      where: {
+        email: { emailId: set.email.emailId },
+        deletedAt: IsNull(),
+        setId: Not(set.setId),
+      },
+    });
+    return others === 0;
   }
 
   /**
@@ -327,6 +366,130 @@ export class SetsService {
     set.pendingCancelAt = null;
     await this.setRepo.save(set);
     return { resumed: true, nextBillingAt: this.resolveCancelAt(sub) };
+  }
+
+  /**
+   * Nightly reconciliation of every paid set against Stripe.
+   *
+   * `cancelSetSubscription` only *schedules* a cancellation: it writes
+   * `pendingCancelAt` and deliberately leaves `deletedAt` NULL so service runs
+   * out the paid period. Nothing then compared that date to now — the only
+   * thing that ever ended such a set was the `customer.subscription.deleted`
+   * webhook, so a webhook that never arrived left the set forwarding SMS for
+   * free, forever. Stripe is the source of truth here; the DB is repaired to
+   * match it, in both directions.
+   */
+  @Cron('0 4 * * *')
+  async reconcileSubscriptions(): Promise<void> {
+    const active = await this.setRepo.find({
+      where: { deletedAt: IsNull() },
+      relations: ['email', 'phone'],
+    });
+    const paid = active.filter(
+      (s) => s.stripeSubscriptionId && s.stripeSubscriptionId !== 'PROMO',
+    );
+    if (!paid.length) return;
+
+    // One list call for the whole account rather than a retrieve per set.
+    const { subs, error } = await this.billing.loadAllStripeSubscriptions();
+    if (error) {
+      // A Stripe outage must never be read as "everybody cancelled".
+      this.logger.error(`Subscription reconciliation skipped — ${error}`);
+      return;
+    }
+
+    let ended = 0;
+    let synced = 0;
+    let skipped = 0;
+
+    for (const set of paid) {
+      try {
+        const outcome = await this.reconcileSet(set, subs.get(set.stripeSubscriptionId!) ?? null);
+        if (outcome === 'ended') ended++;
+        else if (outcome === 'synced') synced++;
+        else if (outcome === 'skipped') skipped++;
+      } catch (err) {
+        this.logger.error(`Failed to reconcile set ${set.setId}: ${err}`);
+      }
+    }
+
+    this.logger.log(
+      `Subscription reconciliation: ${paid.length} checked, ${ended} ended, ${synced} synced, ${skipped} skipped`,
+    );
+  }
+
+  private async reconcileSet(
+    set: EmailPhoneSet,
+    sub: Stripe.Subscription | null,
+  ): Promise<'ended' | 'synced' | 'skipped' | 'ok'> {
+    const now = new Date();
+
+    // Not in the listing at all. Ambiguous — loadAllStripeSubscriptions caps
+    // its paging, so a large account can truncate — so only act on it when our
+    // own schedule already says the paid period is over.
+    if (!sub) {
+      if (set.pendingCancelAt && set.pendingCancelAt <= now) {
+        await this.endSet(set, { cancelStripe: false });
+        return 'ended';
+      }
+      this.logger.warn(
+        `Set ${set.setId}: subscription ${set.stripeSubscriptionId} not found in Stripe — leaving it alone`,
+      );
+      return 'skipped';
+    }
+
+    if (SetsService.TERMINAL_STRIPE_STATUSES.includes(sub.status)) {
+      await this.endSet(set, { cancelStripe: false });
+      return 'ended';
+    }
+
+    // Same derivation the Billing and admin pages use, so all three agree.
+    const state = this.billing.describeSubscription(sub, set);
+
+    if (state.status === 'pending_cancel') {
+      const endsAt = state.endsAt ?? this.resolveCancelAt(sub);
+      if (endsAt && endsAt <= now) {
+        // The paid period is over; Stripe simply hasn't flipped the status yet.
+        await this.endSet(set, { cancelStripe: true });
+        return 'ended';
+      }
+      // Still inside the paid period. Sync the date so a cancellation made from
+      // the Stripe dashboard — which fires an event we don't handle — lands in
+      // the DB instead of showing up as drift.
+      if (endsAt && set.pendingCancelAt?.getTime() !== endsAt.getTime()) {
+        set.pendingCancelAt = endsAt;
+        await this.setRepo.save(set);
+        return 'synced';
+      }
+      return 'ok';
+    }
+
+    // Live and renewing. If the DB still thinks it's cancelling, it was resumed
+    // outside our API — clear the flag rather than ending a paying customer.
+    if (set.pendingCancelAt) {
+      set.pendingCancelAt = null;
+      await this.setRepo.save(set);
+      return 'synced';
+    }
+
+    return 'ok';
+  }
+
+  /**
+   * Tear a set down from the nightly job, with the same notice the Stripe
+   * webhook sends. The SMS is best-effort: a SignalWire failure must not leave
+   * the set alive and forwarding.
+   */
+  private async endSet(set: EmailPhoneSet, opts: { cancelStripe?: boolean }): Promise<void> {
+    if (set.phone && !set.phone.optedOutAt) {
+      try {
+        await this.signalwireService.sendSms(set.phone.phone, SetsService.CANCELLED_NOTICE);
+      } catch (err) {
+        this.logger.error(`Failed to send cancellation SMS for set ${set.setId}: ${err}`);
+      }
+    }
+    await this.teardownSet(set, opts);
+    this.logger.log(`Set ${set.setId} ended — subscription ${set.stripeSubscriptionId} is over`);
   }
 
   async updateSenders(userId: number, setId: number, senders: string[]): Promise<{ updated: true }> {

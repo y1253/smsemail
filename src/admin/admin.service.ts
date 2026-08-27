@@ -78,25 +78,28 @@ export class AdminService {
       .orderBy('user.create_at', 'DESC')
       .getMany();
 
-    // Live sets grouped by user. Previously a COUNT, but the billing column
-    // needs each set's subscription id, and the table is small enough to read.
-    const liveSets = await this.setRepo
+    // Every set grouped by user, torn-down ones included. Previously a COUNT of
+    // live sets, but the billing column needs each set's subscription id, and
+    // the admin list needs to tell "cancelled" apart from "never had a set" —
+    // which a `deleted_at IS NULL` filter erases. The table is small enough.
+    const allSets = await this.setRepo
       .createQueryBuilder('set')
       .innerJoin('set.email', 'email')
       .select('email.user_id', 'userId')
       .addSelect('set.set_id', 'setId')
       .addSelect('set.stripe_subscription_id', 'stripeSubscriptionId')
       .addSelect('set.pending_cancel_at', 'pendingCancelAt')
-      .where('set.deleted_at IS NULL')
+      .addSelect('set.deleted_at', 'deletedAt')
       .getRawMany<{
         userId: number;
         setId: number;
         stripeSubscriptionId: string | null;
         pendingCancelAt: Date | null;
+        deletedAt: Date | null;
       }>();
 
-    const setsByUser = new Map<number, typeof liveSets>();
-    for (const row of liveSets) {
+    const setsByUser = new Map<number, typeof allSets>();
+    for (const row of allSets) {
       const key = Number(row.userId);
       const list = setsByUser.get(key);
       if (list) list.push(row);
@@ -117,12 +120,18 @@ export class AdminService {
             : null;
         return {
           promo,
+          live: !row.deletedAt,
           ...this.billingService.describeSubscription(sub, {
-            deletedAt: null,
+            deletedAt: row.deletedAt,
             pendingCancelAt: row.pendingCancelAt,
           }),
         };
       });
+
+      // Renewal, pending-cancel and promo all describe what the account is
+      // paying for *now*, so they read live sets only — same numbers this
+      // endpoint returned before torn-down sets joined the query.
+      const live = states.filter((s) => s.live);
 
       return {
         userId: u.userId,
@@ -131,12 +140,15 @@ export class AdminService {
         authType: u.authType,
         createdAt: u.createdAt,
         active: u.active,
-        setCount: mine.length,
-        nextRenewalAt: earliestRenewal(states),
-        pendingCancelAt: earliestEnd(states),
-        pendingCancelCount: states.filter((s) => s.status === 'pending_cancel')
+        setCount: live.length,
+        nextRenewalAt: earliestRenewal(live),
+        pendingCancelAt: earliestEnd(live),
+        pendingCancelCount: live.filter((s) => s.status === 'pending_cancel')
           .length,
-        promoCount: states.filter((s) => s.promo).length,
+        promoCount: live.filter((s) => s.promo).length,
+        // Counts every set that has ended, whether torn down here or cancelled
+        // straight from the Stripe dashboard. Powers the admin Cancelled filter.
+        cancelledCount: states.filter((s) => s.status === 'cancelled').length,
         subscriptionsError,
         emails: u.emails.map((e) => e.email),
         phones: u.phones.map((p) => p.phone),

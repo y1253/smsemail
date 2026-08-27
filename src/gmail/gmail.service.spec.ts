@@ -118,7 +118,13 @@ describe('GmailService.sendEmail', () => {
   beforeEach(() => send.mockClear());
 
   it('sends a plain message with no threading headers or threadId', async () => {
-    await makeService().sendEmail('tok', 'me@example.com', 'them@example.com', 'Hi', 'body');
+    await makeService().sendEmail(
+      'tok',
+      'me@example.com',
+      'them@example.com',
+      'Hi',
+      'body',
+    );
 
     const headers = sentHeaders();
     expect(headers).toEqual([
@@ -154,12 +160,18 @@ describe('GmailService.getNewMessages', () => {
     historyList
       .mockResolvedValueOnce({
         data: {
-          history: [{ messagesAdded: [{ message: { id: 'm1' } }, { message: { id: 'm2' } }] }],
+          history: [
+            { messagesAdded: [{ message: { id: 'm1' } }, { message: { id: 'm2' } }] },
+          ],
           nextPageToken: 'page-2',
         },
       })
       .mockResolvedValueOnce({
-        data: { history: [{ messagesAdded: [{ message: { id: 'm2' } }, { message: { id: 'm3' } }] }] },
+        data: {
+          history: [
+            { messagesAdded: [{ message: { id: 'm2' } }, { message: { id: 'm3' } }] },
+          ],
+        },
       });
 
     const messages = await makeService().getNewMessages('tok', '100');
@@ -242,5 +254,132 @@ describe('GmailService.fetchMessage body extraction', () => {
 
     const msg = await makeService().fetchMessage('tok', 'gm-1');
     expect(msg.body).toBe('Approved. Go ahead and book it.');
+  });
+});
+
+describe('GmailService.fetchMessage mislabelled and multi-part bodies', () => {
+  const b64 = (t: string) => Buffer.from(t, 'utf-8').toString('base64url');
+
+  /** A multipart messages.get response; each part is [mimeType, content, filename?]. */
+  function mockParts(parts: Array<[string, string, string?]>) {
+    messagesGet.mockResolvedValue({
+      data: {
+        id: 'gm-1',
+        threadId: 'th-1',
+        labelIds: ['INBOX'],
+        payload: {
+          mimeType: 'multipart/mixed',
+          headers: [
+            { name: 'From', value: 'Shop <no-reply@shop.example>' },
+            { name: 'Subject', value: 'Your order' },
+          ],
+          parts: parts.map(([mimeType, content, filename]) => ({
+            mimeType,
+            filename: filename ?? '',
+            body: { data: b64(content) },
+          })),
+        },
+      },
+    });
+  }
+
+  const body = () =>
+    makeService()
+      .fetchMessage('tok', 'gm-1')
+      .then((m) => m.body);
+
+  beforeEach(() => messagesGet.mockReset());
+
+  it('flattens a whole HTML document sent as text/plain', async () => {
+    mockParts([
+      [
+        'text/plain',
+        '<!doctype html><html><head><style>p{color:red}</style></head>' +
+          '<body><p>Your order #4471 shipped.</p></body></html>',
+      ],
+    ]);
+
+    const text = await body();
+    expect(text).toBe('Your order #4471 shipped.');
+    expect(text).not.toMatch(/[<>]/);
+  });
+
+  it('prefers the real text/html part when text/plain is really markup', async () => {
+    mockParts([
+      ['text/plain', '<div><p>Truncated copy</p></div>'],
+      ['text/html', '<div dir="ltr">Your order #4471 shipped Friday.</div>'],
+    ]);
+
+    await expect(body()).resolves.toBe('Your order #4471 shipped Friday.');
+  });
+
+  it('removes a stray tag and decodes entities in an otherwise plain body', async () => {
+    mockParts([['text/plain', 'Hi &amp; welcome <b>back</b>']]);
+
+    await expect(body()).resolves.toBe('Hi & welcome back');
+  });
+
+  it('leaves an angle-bracketed address and an inequality alone', async () => {
+    mockParts([['text/plain', 'Ping John Doe <john@example.com> if a < b.']]);
+
+    await expect(body()).resolves.toBe('Ping John Doe <john@example.com> if a < b.');
+  });
+
+  it('falls back to the html part when text/plain is whitespace only', async () => {
+    mockParts([
+      ['text/plain', '   \n  '],
+      ['text/html', '<div>Deposit due Friday.</div>'],
+    ]);
+
+    await expect(body()).resolves.toBe('Deposit due Friday.');
+  });
+
+  it('ignores a text/plain attachment in favour of the real body', async () => {
+    mockParts([
+      ['text/plain', 'Attachment contents, not the message.', 'notes.txt'],
+      ['text/plain', 'The venue needs a $500 deposit by Friday.'],
+    ]);
+
+    await expect(body()).resolves.toBe('The venue needs a $500 deposit by Friday.');
+  });
+
+  it('ignores the body of an attached message/rfc822', async () => {
+    messagesGet.mockResolvedValue({
+      data: {
+        id: 'gm-1',
+        threadId: 'th-1',
+        labelIds: ['INBOX'],
+        payload: {
+          mimeType: 'multipart/mixed',
+          headers: [{ name: 'From', value: 'Shop <no-reply@shop.example>' }],
+          parts: [
+            {
+              mimeType: 'message/rfc822',
+              filename: '',
+              parts: [
+                {
+                  mimeType: 'text/plain',
+                  filename: '',
+                  body: { data: b64('Forwarded original.') },
+                },
+              ],
+            },
+            {
+              mimeType: 'text/plain',
+              filename: '',
+              body: { data: b64('See the attached mail.') },
+            },
+          ],
+        },
+      },
+    });
+
+    await expect(body()).resolves.toBe('See the attached mail.');
+  });
+
+  it('returns an empty body when there is no text part at all', async () => {
+    mockParts([['application/pdf', 'binary', 'invoice.pdf']]);
+
+    await expect(body()).resolves.toBe('');
   });
 });

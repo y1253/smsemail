@@ -157,7 +157,7 @@ export class BillingService {
    * `parent.subscription_details.subscription`. Fall back to the legacy field so
    * invoices written under an older API version still resolve.
    */
-  private resolveInvoiceSubscriptionId(inv: Stripe.Invoice): string | null {
+  resolveInvoiceSubscriptionId(inv: Stripe.Invoice): string | null {
     const fromParent = inv.parent?.subscription_details?.subscription;
     const raw = fromParent ?? (inv as any).subscription ?? null;
     if (!raw) return null;

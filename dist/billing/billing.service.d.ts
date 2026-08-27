@@ -60,7 +60,7 @@ export declare class BillingService {
     constructor(userRepo: Repository<User>, setRepo: Repository<EmailPhoneSet>, config: ConfigService);
     listInvoicesForUser(userId: number, dto: ListInvoicesDto): Promise<InvoicePage>;
     private toBillingInvoice;
-    private resolveInvoiceSubscriptionId;
+    resolveInvoiceSubscriptionId(inv: Stripe.Invoice): string | null;
     listSubscriptionsForUser(userId: number): Promise<BillingSubscription[]>;
     loadStripeSubscriptions(customerId: string | null | undefined): Promise<SubscriptionLookup>;
     loadAllStripeSubscriptions(): Promise<SubscriptionLookup>;

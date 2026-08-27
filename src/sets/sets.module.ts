@@ -10,6 +10,7 @@ import { SetsController } from './sets.controller';
 import { AuthModule } from '../auth/auth.module';
 import { EmailsModule } from '../emails/emails.module';
 import { GmailModule } from '../gmail/gmail.module';
+import { BillingModule } from '../billing/billing.module';
 
 @Module({
   imports: [
@@ -17,6 +18,7 @@ import { GmailModule } from '../gmail/gmail.module';
     AuthModule,
     forwardRef(() => EmailsModule),
     GmailModule,
+    BillingModule,
   ],
   controllers: [SetsController],
   providers: [SetsService],

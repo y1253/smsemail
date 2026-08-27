@@ -19,6 +19,7 @@ const sets_controller_1 = require("./sets.controller");
 const auth_module_1 = require("../auth/auth.module");
 const emails_module_1 = require("../emails/emails.module");
 const gmail_module_1 = require("../gmail/gmail.module");
+const billing_module_1 = require("../billing/billing.module");
 let SetsModule = class SetsModule {
 };
 exports.SetsModule = SetsModule;
@@ -29,6 +30,7 @@ exports.SetsModule = SetsModule = __decorate([
             auth_module_1.AuthModule,
             (0, common_1.forwardRef)(() => emails_module_1.EmailsModule),
             gmail_module_1.GmailModule,
+            billing_module_1.BillingModule,
         ],
         controllers: [sets_controller_1.SetsController],
         providers: [sets_service_1.SetsService],

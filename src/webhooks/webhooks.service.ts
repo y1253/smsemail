@@ -13,6 +13,7 @@ import { EmailsService } from '../emails/emails.service';
 import { GmailService } from '../gmail/gmail.service';
 import { OpenAiService } from '../openai/openai.service';
 import { SignalwireService } from '../signalwire/signalwire.service';
+import { BillingService } from '../billing/billing.service';
 import { ellipsize, fitToSentence } from '../common/text.util';
 import { randomMessageId } from '../common/id.util';
 
@@ -48,6 +49,7 @@ export class WebhooksService {
     private readonly gmailService: GmailService,
     private readonly openAiService: OpenAiService,
     private readonly signalwireService: SignalwireService,
+    private readonly billing: BillingService,
   ) {
     const key = this.config.get<string>('STRIPE_TEST_KEY');
     if (!key) throw new Error('STRIPE_TEST_KEY is not set');
@@ -478,7 +480,7 @@ Reply STOP to unsubscribe`,
 
     const subscriptionId =
       event.type === 'invoice.payment_failed'
-        ? ((event.data.object as any).subscription as string | null)
+        ? this.billing.resolveInvoiceSubscriptionId(event.data.object as Stripe.Invoice)
         : (event.data.object as Stripe.Subscription).id;
 
     if (!subscriptionId) return;

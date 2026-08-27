@@ -21,6 +21,7 @@ const common_1 = require("@nestjs/common");
 const typeorm_1 = require("@nestjs/typeorm");
 const typeorm_2 = require("typeorm");
 const config_1 = require("@nestjs/config");
+const schedule_1 = require("@nestjs/schedule");
 const stripe_1 = __importDefault(require("stripe"));
 const user_entity_1 = require("../users/user.entity");
 const email_entity_1 = require("../emails/email.entity");
@@ -30,7 +31,9 @@ const set_allowed_sender_entity_1 = require("./set-allowed-sender.entity");
 const emails_service_1 = require("../emails/emails.service");
 const gmail_service_1 = require("../gmail/gmail.service");
 const signalwire_service_1 = require("../signalwire/signalwire.service");
-let SetsService = SetsService_1 = class SetsService {
+const billing_service_1 = require("../billing/billing.service");
+let SetsService = class SetsService {
+    static { SetsService_1 = this; }
     userRepo;
     emailRepo;
     phoneRepo;
@@ -40,9 +43,16 @@ let SetsService = SetsService_1 = class SetsService {
     emailsService;
     gmailService;
     signalwireService;
+    billing;
     stripe;
     logger = new common_1.Logger(SetsService_1.name);
-    constructor(userRepo, emailRepo, phoneRepo, setRepo, senderRepo, config, emailsService, gmailService, signalwireService) {
+    static TERMINAL_STRIPE_STATUSES = [
+        'canceled',
+        'incomplete_expired',
+        'unpaid',
+    ];
+    static CANCELLED_NOTICE = 'Your subscription was cancelled — SMS email forwarding has been stopped.';
+    constructor(userRepo, emailRepo, phoneRepo, setRepo, senderRepo, config, emailsService, gmailService, signalwireService, billing) {
         this.userRepo = userRepo;
         this.emailRepo = emailRepo;
         this.phoneRepo = phoneRepo;
@@ -52,6 +62,7 @@ let SetsService = SetsService_1 = class SetsService {
         this.emailsService = emailsService;
         this.gmailService = gmailService;
         this.signalwireService = signalwireService;
+        this.billing = billing;
         const key = this.config.get('STRIPE_TEST_KEY');
         if (!key)
             throw new Error('STRIPE_TEST_KEY is not set');
@@ -84,8 +95,9 @@ let SetsService = SetsService_1 = class SetsService {
         await this.teardownSet(set);
         return { deleted: true };
     }
-    async teardownSet(set) {
-        if (set.stripeSubscriptionId && set.stripeSubscriptionId !== 'PROMO') {
+    async teardownSet(set, opts = {}) {
+        const { cancelStripe = true } = opts;
+        if (cancelStripe && set.stripeSubscriptionId && set.stripeSubscriptionId !== 'PROMO') {
             try {
                 await this.stripe.subscriptions.cancel(set.stripeSubscriptionId);
             }
@@ -93,7 +105,7 @@ let SetsService = SetsService_1 = class SetsService {
                 this.logger.error(`Failed to cancel Stripe subscription ${set.stripeSubscriptionId}: ${err}`);
             }
         }
-        if (set.email?.refreshToken) {
+        if (set.email?.refreshToken && (await this.isLastSetForEmail(set))) {
             try {
                 const refreshToken = this.emailsService.decrypt(set.email.refreshToken);
                 await this.gmailService.unwatchGmail(refreshToken);
@@ -105,6 +117,16 @@ let SetsService = SetsService_1 = class SetsService {
         set.deletedAt = new Date();
         set.pendingCancelAt = null;
         await this.setRepo.save(set);
+    }
+    async isLastSetForEmail(set) {
+        const others = await this.setRepo.count({
+            where: {
+                email: { emailId: set.email.emailId },
+                deletedAt: (0, typeorm_2.IsNull)(),
+                setId: (0, typeorm_2.Not)(set.setId),
+            },
+        });
+        return others === 0;
     }
     async teardownSetsForEmail(userId, emailId) {
         const sets = await this.setRepo.find({
@@ -276,6 +298,85 @@ let SetsService = SetsService_1 = class SetsService {
         await this.setRepo.save(set);
         return { resumed: true, nextBillingAt: this.resolveCancelAt(sub) };
     }
+    async reconcileSubscriptions() {
+        const active = await this.setRepo.find({
+            where: { deletedAt: (0, typeorm_2.IsNull)() },
+            relations: ['email', 'phone'],
+        });
+        const paid = active.filter((s) => s.stripeSubscriptionId && s.stripeSubscriptionId !== 'PROMO');
+        if (!paid.length)
+            return;
+        const { subs, error } = await this.billing.loadAllStripeSubscriptions();
+        if (error) {
+            this.logger.error(`Subscription reconciliation skipped — ${error}`);
+            return;
+        }
+        let ended = 0;
+        let synced = 0;
+        let skipped = 0;
+        for (const set of paid) {
+            try {
+                const outcome = await this.reconcileSet(set, subs.get(set.stripeSubscriptionId) ?? null);
+                if (outcome === 'ended')
+                    ended++;
+                else if (outcome === 'synced')
+                    synced++;
+                else if (outcome === 'skipped')
+                    skipped++;
+            }
+            catch (err) {
+                this.logger.error(`Failed to reconcile set ${set.setId}: ${err}`);
+            }
+        }
+        this.logger.log(`Subscription reconciliation: ${paid.length} checked, ${ended} ended, ${synced} synced, ${skipped} skipped`);
+    }
+    async reconcileSet(set, sub) {
+        const now = new Date();
+        if (!sub) {
+            if (set.pendingCancelAt && set.pendingCancelAt <= now) {
+                await this.endSet(set, { cancelStripe: false });
+                return 'ended';
+            }
+            this.logger.warn(`Set ${set.setId}: subscription ${set.stripeSubscriptionId} not found in Stripe — leaving it alone`);
+            return 'skipped';
+        }
+        if (SetsService_1.TERMINAL_STRIPE_STATUSES.includes(sub.status)) {
+            await this.endSet(set, { cancelStripe: false });
+            return 'ended';
+        }
+        const state = this.billing.describeSubscription(sub, set);
+        if (state.status === 'pending_cancel') {
+            const endsAt = state.endsAt ?? this.resolveCancelAt(sub);
+            if (endsAt && endsAt <= now) {
+                await this.endSet(set, { cancelStripe: true });
+                return 'ended';
+            }
+            if (endsAt && set.pendingCancelAt?.getTime() !== endsAt.getTime()) {
+                set.pendingCancelAt = endsAt;
+                await this.setRepo.save(set);
+                return 'synced';
+            }
+            return 'ok';
+        }
+        if (set.pendingCancelAt) {
+            set.pendingCancelAt = null;
+            await this.setRepo.save(set);
+            return 'synced';
+        }
+        return 'ok';
+    }
+    async endSet(set, opts) {
+        if (set.phone && !set.phone.optedOutAt) {
+            try {
+                await this.signalwireService.sendSms(set.phone.phone, SetsService_1.CANCELLED_NOTICE);
+            }
+            catch (err) {
+                this.logger.error(`Failed to send cancellation SMS for set ${set.setId}: ${err}`);
+            }
+        }
+        await this.teardownSet(set, opts);
+        this.logger.log(`Set ${set.setId} ended — subscription ${set.stripeSubscriptionId} is over`);
+    }
     async updateSenders(userId, setId, senders) {
         const set = await this.setRepo.findOne({
             where: { setId, deletedAt: (0, typeorm_2.IsNull)() },
@@ -307,6 +408,12 @@ let SetsService = SetsService_1 = class SetsService {
     }
 };
 exports.SetsService = SetsService;
+__decorate([
+    (0, schedule_1.Cron)('0 4 * * *'),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", []),
+    __metadata("design:returntype", Promise)
+], SetsService.prototype, "reconcileSubscriptions", null);
 exports.SetsService = SetsService = SetsService_1 = __decorate([
     (0, common_1.Injectable)(),
     __param(0, (0, typeorm_1.InjectRepository)(user_entity_1.User)),
@@ -323,6 +430,7 @@ exports.SetsService = SetsService = SetsService_1 = __decorate([
         config_1.ConfigService,
         emails_service_1.EmailsService,
         gmail_service_1.GmailService,
-        signalwire_service_1.SignalwireService])
+        signalwire_service_1.SignalwireService,
+        billing_service_1.BillingService])
 ], SetsService);
 //# sourceMappingURL=sets.service.js.map

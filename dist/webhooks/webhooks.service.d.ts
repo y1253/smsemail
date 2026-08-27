@@ -9,6 +9,7 @@ import { EmailsService } from '../emails/emails.service';
 import { GmailService } from '../gmail/gmail.service';
 import { OpenAiService } from '../openai/openai.service';
 import { SignalwireService } from '../signalwire/signalwire.service';
+import { BillingService } from '../billing/billing.service';
 export declare class WebhooksService {
     private readonly emailRepo;
     private readonly phoneRepo;
@@ -20,12 +21,13 @@ export declare class WebhooksService {
     private readonly gmailService;
     private readonly openAiService;
     private readonly signalwireService;
+    private readonly billing;
     private static readonly SMS_LIMIT;
     private static readonly MESSAGE_RETENTION_DAYS;
     private readonly logger;
     private readonly stripe;
     private readonly pushChains;
-    constructor(emailRepo: Repository<Email>, phoneRepo: Repository<Phone>, setRepo: Repository<EmailPhoneSet>, incomeMessageRepo: Repository<IncomeMessage>, pendingRepo: Repository<PendingSmsCommand>, config: ConfigService, emailsService: EmailsService, gmailService: GmailService, openAiService: OpenAiService, signalwireService: SignalwireService);
+    constructor(emailRepo: Repository<Email>, phoneRepo: Repository<Phone>, setRepo: Repository<EmailPhoneSet>, incomeMessageRepo: Repository<IncomeMessage>, pendingRepo: Repository<PendingSmsCommand>, config: ConfigService, emailsService: EmailsService, gmailService: GmailService, openAiService: OpenAiService, signalwireService: SignalwireService, billing: BillingService);
     handleGmailPush(payload: Record<string, any>): Promise<void>;
     private processGmailPush;
     private advanceHistoryId;

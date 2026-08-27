@@ -8,6 +8,7 @@ import { SetAllowedSender } from './set-allowed-sender.entity';
 import { EmailsService } from '../emails/emails.service';
 import { GmailService } from '../gmail/gmail.service';
 import { SignalwireService } from '../signalwire/signalwire.service';
+import { BillingService } from '../billing/billing.service';
 export declare class SetsService {
     private readonly userRepo;
     private readonly emailRepo;
@@ -18,9 +19,12 @@ export declare class SetsService {
     private readonly emailsService;
     private readonly gmailService;
     private readonly signalwireService;
+    private readonly billing;
     private readonly stripe;
     private readonly logger;
-    constructor(userRepo: Repository<User>, emailRepo: Repository<Email>, phoneRepo: Repository<Phone>, setRepo: Repository<EmailPhoneSet>, senderRepo: Repository<SetAllowedSender>, config: ConfigService, emailsService: EmailsService, gmailService: GmailService, signalwireService: SignalwireService);
+    private static readonly TERMINAL_STRIPE_STATUSES;
+    private static readonly CANCELLED_NOTICE;
+    constructor(userRepo: Repository<User>, emailRepo: Repository<Email>, phoneRepo: Repository<Phone>, setRepo: Repository<EmailPhoneSet>, senderRepo: Repository<SetAllowedSender>, config: ConfigService, emailsService: EmailsService, gmailService: GmailService, signalwireService: SignalwireService, billing: BillingService);
     listSetsForUser(userId: number): Promise<{
         setId: number;
         createdAt: Date;
@@ -40,6 +44,7 @@ export declare class SetsService {
         deleted: true;
     }>;
     private teardownSet;
+    private isLastSetForEmail;
     teardownSetsForEmail(userId: number, emailId: number): Promise<number>;
     teardownSetsForPhone(userId: number, phoneId: number): Promise<number>;
     private isPromoValid;
@@ -57,6 +62,9 @@ export declare class SetsService {
         resumed: true;
         nextBillingAt: Date | null;
     }>;
+    reconcileSubscriptions(): Promise<void>;
+    private reconcileSet;
+    private endSet;
     updateSenders(userId: number, setId: number, senders: string[]): Promise<{
         updated: true;
     }>;

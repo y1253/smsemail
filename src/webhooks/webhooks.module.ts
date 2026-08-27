@@ -9,6 +9,7 @@ import { PendingSmsCommand } from './pending-sms-command.entity';
 import { EmailsModule } from '../emails/emails.module';
 import { GmailModule } from '../gmail/gmail.module';
 import { OpenAiModule } from '../openai/openai.module';
+import { BillingModule } from '../billing/billing.module';
 import { WebhooksService } from './webhooks.service';
 import { WebhookSecurityService } from './webhook-security.service';
 import { WebhooksController } from './webhooks.controller';
@@ -19,6 +20,7 @@ import { WebhooksController } from './webhooks.controller';
     EmailsModule,
     GmailModule,
     OpenAiModule,
+    BillingModule,
   ],
   controllers: [WebhooksController],
   providers: [WebhooksService, WebhookSecurityService],
