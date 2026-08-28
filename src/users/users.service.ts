@@ -107,6 +107,9 @@ export class UsersService {
       throw new BadRequestException('This account signs in with Google');
     }
 
+    // A 401 from a caller whose session is perfectly valid. Deliberately carries
+    // no SESSION_INVALID code (see auth.service.ts): tagging it would sign the
+    // user out of the very page they are typing their password into.
     if (!(await bcrypt.compare(dto.current_password, user.password))) {
       throw new UnauthorizedException('Current password is incorrect');
     }

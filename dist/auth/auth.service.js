@@ -12,12 +12,19 @@ var __param = (this && this.__param) || function (paramIndex, decorator) {
     return function (target, key) { decorator(target, key, paramIndex); }
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.AuthService = void 0;
+exports.AuthService = exports.SESSION_INVALID = void 0;
 const common_1 = require("@nestjs/common");
 const jwt_1 = require("@nestjs/jwt");
 const typeorm_1 = require("@nestjs/typeorm");
 const typeorm_2 = require("typeorm");
 const user_entity_1 = require("../users/user.entity");
+exports.SESSION_INVALID = 'SESSION_INVALID';
+const sessionOver = (reason, message) => new common_1.UnauthorizedException({
+    statusCode: 401,
+    message,
+    code: exports.SESSION_INVALID,
+    reason,
+});
 let AuthService = class AuthService {
     jwtService;
     userRepo;
@@ -28,24 +35,27 @@ let AuthService = class AuthService {
     async validCustomer(request) {
         const token = request.headers['x-token'];
         if (!token) {
-            throw new common_1.UnauthorizedException('Missing token');
+            throw sessionOver('invalid', 'Missing token');
         }
         let decoded;
         try {
             decoded = await this.jwtService.verify(token);
         }
-        catch {
-            throw new common_1.UnauthorizedException('Invalid token');
+        catch (err) {
+            const expired = err?.name === 'TokenExpiredError';
+            throw sessionOver(expired ? 'expired' : 'invalid', expired
+                ? 'Your session has expired. Please sign in again.'
+                : 'Invalid token');
         }
         const current = await this.userRepo.findOne({
             where: { userId: decoded.user_id },
             select: ['userId', 'tokenVersion'],
         });
         if (!current) {
-            throw new common_1.UnauthorizedException('Invalid token');
+            throw sessionOver('invalid', 'Invalid token');
         }
         if ((decoded.tv ?? 0) !== (current.tokenVersion ?? 0)) {
-            throw new common_1.UnauthorizedException('Session ended because the account password was changed. Please sign in again.');
+            throw sessionOver('revoked', 'Session ended because the account password was changed. Please sign in again.');
         }
         request.user = decoded;
         return true;
