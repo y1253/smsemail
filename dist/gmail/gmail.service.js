@@ -13,6 +13,7 @@ exports.GmailService = void 0;
 const common_1 = require("@nestjs/common");
 const config_1 = require("@nestjs/config");
 const googleapis_1 = require("googleapis");
+const email_address_util_1 = require("../common/email-address.util");
 const html_util_1 = require("../common/html.util");
 const quoted_text_util_1 = require("../common/quoted-text.util");
 let GmailService = class GmailService {
@@ -166,7 +167,7 @@ let GmailService = class GmailService {
         const safeFrom = this.sanitizeHeader(from);
         const safeTo = this.sanitizeHeader(to);
         const safeSubject = this.sanitizeHeader(subject);
-        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(safeTo)) {
+        if (!(0, email_address_util_1.isBareEmailAddress)(safeTo)) {
             throw new common_1.BadRequestException('Invalid recipient email address');
         }
         const inReplyTo = opts?.inReplyTo?.trim();

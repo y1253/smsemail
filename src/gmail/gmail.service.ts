@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { google, gmail_v1 } from 'googleapis';
+import { isBareEmailAddress } from '../common/email-address.util';
 import { htmlToText, looksLikeHtml, stripStrayMarkup } from '../common/html.util';
 import { stripQuotedText } from '../common/quoted-text.util';
 
@@ -255,8 +256,10 @@ export class GmailService {
     const safeTo = this.sanitizeHeader(to);
     const safeSubject = this.sanitizeHeader(subject);
 
-    // Reject anything that isn't a single well-formed address.
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(safeTo)) {
+    // Reject anything that isn't a single well-formed address. Shared with the
+    // inbound SMS parser so the two checks cannot drift apart; this remains the
+    // last-ditch defence right before the header is written.
+    if (!isBareEmailAddress(safeTo)) {
       throw new BadRequestException('Invalid recipient email address');
     }
 

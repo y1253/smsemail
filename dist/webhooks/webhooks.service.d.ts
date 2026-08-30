@@ -32,7 +32,10 @@ export declare class WebhooksService {
     private processGmailPush;
     private advanceHistoryId;
     handleInboundSms(from: string, body: string): Promise<void>;
+    private static readonly INVALID_RECIPIENT_SMS;
+    private static readonly MISSING_BODY_SMS;
     private parseSendCommand;
+    private sendSmsSafely;
     private replyToMessage;
     private resolveThreadingHeaders;
     private sendNewEmail;

@@ -33,7 +33,9 @@ const gmail_service_1 = require("../gmail/gmail.service");
 const openai_service_1 = require("../openai/openai.service");
 const signalwire_service_1 = require("../signalwire/signalwire.service");
 const billing_service_1 = require("../billing/billing.service");
+const email_address_util_1 = require("../common/email-address.util");
 const text_util_1 = require("../common/text.util");
+const sms_command_error_1 = require("./sms-command.error");
 const id_util_1 = require("../common/id.util");
 let WebhooksService = class WebhooksService {
     static { WebhooksService_1 = this; }
@@ -80,7 +82,9 @@ let WebhooksService = class WebhooksService {
             .catch(() => undefined)
             .then(() => this.processGmailPush(emailAddress, String(newHistoryId)));
         this.pushChains.set(emailAddress, current);
-        void current.catch(() => undefined).then(() => {
+        void current
+            .catch(() => undefined)
+            .then(() => {
             if (this.pushChains.get(emailAddress) === current)
                 this.pushChains.delete(emailAddress);
         });
@@ -104,7 +108,10 @@ let WebhooksService = class WebhooksService {
                     continue;
                 try {
                     const alreadySent = await this.incomeMessageRepo.findOne({
-                        where: { email: { emailId: email.emailId }, gmailMessageId: raw.id },
+                        where: {
+                            email: { emailId: email.emailId },
+                            gmailMessageId: raw.id,
+                        },
                         select: { messageId: true },
                     });
                     if (alreadySent) {
@@ -112,7 +119,13 @@ let WebhooksService = class WebhooksService {
                         continue;
                     }
                     const msg = await this.gmailService.fetchMessage(refreshToken, raw.id);
-                    const isJunk = msg.labels.some((l) => ['CATEGORY_PROMOTIONS', 'CATEGORY_SOCIAL', 'CATEGORY_FORUMS', 'SENT', 'DRAFT'].includes(l));
+                    const isJunk = msg.labels.some((l) => [
+                        'CATEGORY_PROMOTIONS',
+                        'CATEGORY_SOCIAL',
+                        'CATEGORY_FORUMS',
+                        'SENT',
+                        'DRAFT',
+                    ].includes(l));
                     if (isJunk) {
                         this.logger.debug(`Skipping message ${raw.id} (labels: ${msg.labels.join(', ')})`);
                         continue;
@@ -142,7 +155,8 @@ let WebhooksService = class WebhooksService {
                         if (sentTo.has(set.phone.phone))
                             continue;
                         const filter = set.allowedSenders ?? [];
-                        if (filter.length > 0 && !filter.some((s) => s.email === senderAddr))
+                        if (filter.length > 0 &&
+                            !filter.some((s) => s.email === senderAddr))
                             continue;
                         await this.signalwireService.sendSms(set.phone.phone, sms);
                         sentTo.add(set.phone.phone);
@@ -159,7 +173,8 @@ let WebhooksService = class WebhooksService {
         const current = await this.emailRepo.findOne({ where: { emailId } });
         if (!current)
             return;
-        if (current.lastHistoryId && BigInt(current.lastHistoryId) >= BigInt(newHistoryId))
+        if (current.lastHistoryId &&
+            BigInt(current.lastHistoryId) >= BigInt(newHistoryId))
             return;
         current.lastHistoryId = newHistoryId;
         await this.emailRepo.save(current);
@@ -236,7 +251,9 @@ Reply STOP to unsubscribe`);
             if (pending) {
                 if (/^\d+$/.test(trimmed)) {
                     const choice = parseInt(trimmed, 10);
-                    const candidateIds = pending.emailIds.split(',').map((s) => parseInt(s, 10));
+                    const candidateIds = pending.emailIds
+                        .split(',')
+                        .map((s) => parseInt(s, 10));
                     const chosenId = candidateIds[choice - 1];
                     const chosen = emails.find((e) => e.emailId === chosenId);
                     if (!chosen) {
@@ -244,7 +261,7 @@ Reply STOP to unsubscribe`);
                         return;
                     }
                     await this.pendingRepo.delete({ id: pending.id });
-                    const { to, subject, body: msgBody } = this.parseSendCommand(pending.body);
+                    const { to, subject, body: msgBody, } = this.parseSendCommand(pending.body);
                     await this.sendNewEmail(from, chosen, to, subject, msgBody);
                     return;
                 }
@@ -259,7 +276,7 @@ Reply STOP to unsubscribe`);
                     relations: ['email'],
                 });
                 if (!msg)
-                    throw new Error(`Message #${msgId} not found`);
+                    throw new sms_command_error_1.SmsCommandError(`Message ${msgId} not found. Check the number in the alert, or reply R with just your message.`);
                 await this.replyToMessage(from, msg.email, msg, replyText);
             }
             else if (/^R\s+/i.test(trimmed)) {
@@ -270,7 +287,7 @@ Reply STOP to unsubscribe`);
                     relations: ['email'],
                 });
                 if (!latest)
-                    throw new Error('No messages to reply to');
+                    throw new sms_command_error_1.SmsCommandError('No messages to reply to yet.');
                 await this.replyToMessage(from, latest.email, latest, replyText);
             }
             else if (/^S\s+/i.test(trimmed)) {
@@ -294,25 +311,65 @@ Reply STOP to unsubscribe`);
             }
         }
         catch (err) {
+            if (err instanceof sms_command_error_1.SmsCommandError) {
+                this.logger.warn(`Inbound SMS rejected from ${from}: ${err.message}`);
+                await this.sendSmsSafely(from, err.message);
+                return;
+            }
             this.logger.error(`Inbound SMS error from ${from}: ${err}`);
-            await this.signalwireService.sendSms(from, 'Sorry, something went wrong processing your message. Please try again.');
+            await this.sendSmsSafely(from, 'Sorry, something went wrong processing your message. Please try again.');
         }
     }
+    static INVALID_RECIPIENT_SMS = "That email address didn't look valid.\nUse:\nS bob@work.com your message\n" +
+        'With a subject:\nS bob@work.com | Subject | message';
+    static MISSING_BODY_SMS = 'Missing message text. Use: S bob@work.com your message';
     parseSendCommand(trimmed) {
-        const rest = trimmed.replace(/^S\s+/i, '');
-        const pipeParts = rest.split('|').map((p) => p.trim());
-        if (pipeParts.length >= 3) {
-            const [to, subject, ...bodyParts] = pipeParts;
-            return { to, subject, body: bodyParts.join('|') };
+        const rest = (0, email_address_util_1.normalizeSmsText)(trimmed)
+            .replace(/^S\s+/i, '')
+            .replace(/^to\s*:\s*/i, '');
+        if (rest.includes('|')) {
+            const parts = rest.split('|').map((part) => part.trim());
+            const pipeTo = (0, email_address_util_1.normalizeRecipient)(parts[0]);
+            if ((0, email_address_util_1.isBareEmailAddress)(pipeTo)) {
+                const subject = parts.length >= 3 ? parts[1] : '';
+                const body = (parts.length >= 3 ? parts.slice(2).join('|') : (parts[1] ?? '')).trim();
+                if (!body)
+                    throw new sms_command_error_1.SmsCommandError(WebhooksService_1.MISSING_BODY_SMS);
+                return { to: pipeTo, subject, body };
+            }
         }
-        const spaceIdx = rest.indexOf(' ');
-        if (spaceIdx === -1)
-            throw new Error('Missing message body. Use: S email@x.com message');
-        return { to: rest.slice(0, spaceIdx), subject: '', body: rest.slice(spaceIdx + 1) };
+        const angled = rest.match(/^[^<>]*<([^>]+)>([\s\S]*)$/);
+        if (angled) {
+            const angledTo = (0, email_address_util_1.normalizeRecipient)(angled[1]);
+            if ((0, email_address_util_1.isBareEmailAddress)(angledTo)) {
+                const angledBody = angled[2].replace(/^\s+/, '');
+                if (!angledBody)
+                    throw new sms_command_error_1.SmsCommandError(WebhooksService_1.MISSING_BODY_SMS);
+                return { to: angledTo, subject: '', body: angledBody };
+            }
+        }
+        const match = rest.match(/^(\S+)([\s\S]*)$/);
+        if (!match)
+            throw new sms_command_error_1.SmsCommandError(WebhooksService_1.INVALID_RECIPIENT_SMS);
+        const to = (0, email_address_util_1.normalizeRecipient)(match[1]);
+        const body = match[2].replace(/^\s+/, '');
+        if (!(0, email_address_util_1.isBareEmailAddress)(to))
+            throw new sms_command_error_1.SmsCommandError(WebhooksService_1.INVALID_RECIPIENT_SMS);
+        if (!body)
+            throw new sms_command_error_1.SmsCommandError(WebhooksService_1.MISSING_BODY_SMS);
+        return { to, subject: '', body };
+    }
+    async sendSmsSafely(to, body) {
+        try {
+            await this.signalwireService.sendSms(to, body);
+        }
+        catch (err) {
+            this.logger.error(`Failed to send SMS to ${to}: ${err}`);
+        }
     }
     async replyToMessage(from, email, msg, replyText) {
         if (!email.refreshToken) {
-            await this.signalwireService.sendSms(from, `Gmail connection for ${email.email} needs reconnecting on the dashboard.`);
+            await this.sendSmsSafely(from, `Gmail connection for ${email.email} needs reconnecting on the dashboard.`);
             return;
         }
         const refreshToken = this.emailsService.decrypt(email.refreshToken);
@@ -325,11 +382,14 @@ Reply STOP to unsubscribe`);
             await this.handleSendError(from, email, err);
             return;
         }
-        await this.signalwireService.sendSms(from, `Sent to ${to}`);
+        await this.sendSmsSafely(from, `Sent to ${to}`);
     }
     async resolveThreadingHeaders(refreshToken, msg) {
         if (msg.rfcMessageId) {
-            return { rfcMessageId: msg.rfcMessageId, referencesHeader: msg.referencesHeader };
+            return {
+                rfcMessageId: msg.rfcMessageId,
+                referencesHeader: msg.referencesHeader,
+            };
         }
         try {
             const fetched = await this.gmailService.fetchMessage(refreshToken, msg.gmailMessageId);
@@ -337,7 +397,10 @@ Reply STOP to unsubscribe`);
                 return { rfcMessageId: null, referencesHeader: null };
             const rfcMessageId = fetched.rfcMessageId.slice(0, 255);
             const referencesHeader = fetched.references || null;
-            await this.incomeMessageRepo.update(msg.messageId, { rfcMessageId, referencesHeader });
+            await this.incomeMessageRepo.update(msg.messageId, {
+                rfcMessageId,
+                referencesHeader,
+            });
             return { rfcMessageId, referencesHeader };
         }
         catch (err) {
@@ -347,7 +410,7 @@ Reply STOP to unsubscribe`);
     }
     async sendNewEmail(from, email, to, subject, body) {
         if (!email.refreshToken) {
-            await this.signalwireService.sendSms(from, `Gmail connection for ${email.email} needs reconnecting on the dashboard.`);
+            await this.sendSmsSafely(from, `Gmail connection for ${email.email} needs reconnecting on the dashboard.`);
             return;
         }
         const refreshToken = this.emailsService.decrypt(email.refreshToken);
@@ -355,17 +418,22 @@ Reply STOP to unsubscribe`);
             await this.gmailService.sendEmail(refreshToken, email.email, to, subject, body);
         }
         catch (err) {
-            await this.handleSendError(from, email, err);
+            await this.handleSendError(from, email, err, true);
             return;
         }
-        await this.signalwireService.sendSms(from, `Sent to ${to}`);
+        await this.sendSmsSafely(from, `Sent to ${to}`);
     }
-    async handleSendError(from, email, err) {
+    async handleSendError(from, email, err, typedRecipient = false) {
         const message = err?.message ?? String(err);
         if (/invalid_grant/i.test(message)) {
             this.logger.error(`invalid_grant sending from email ${email.emailId} (${email.email})`);
-            await this.signalwireService.sendSms(from, `Gmail connection for ${email.email} needs reauthorizing — reconnect it on the dashboard.`);
+            await this.sendSmsSafely(from, `Gmail connection for ${email.email} needs reauthorizing - reconnect it on the dashboard.`);
             return;
+        }
+        if (typedRecipient &&
+            (err instanceof common_1.BadRequestException ||
+                /invalid (to|recipient)/i.test(message))) {
+            throw new sms_command_error_1.SmsCommandError(WebhooksService_1.INVALID_RECIPIENT_SMS);
         }
         throw err instanceof Error ? err : new Error(message);
     }
@@ -384,7 +452,8 @@ Reply STOP to unsubscribe`);
         catch {
             throw new Error('Stripe signature verification failed');
         }
-        if (event.type !== 'invoice.payment_failed' && event.type !== 'customer.subscription.deleted') {
+        if (event.type !== 'invoice.payment_failed' &&
+            event.type !== 'customer.subscription.deleted') {
             return;
         }
         const subscriptionId = event.type === 'invoice.payment_failed'
@@ -442,14 +511,19 @@ Reply STOP to unsubscribe`);
     }
     async pruneOldMessages() {
         const cutoff = new Date(Date.now() - WebhooksService_1.MESSAGE_RETENTION_DAYS * 24 * 60 * 60 * 1000);
-        const { affected } = await this.incomeMessageRepo.delete({ createdAt: (0, typeorm_2.LessThan)(cutoff) });
+        const { affected } = await this.incomeMessageRepo.delete({
+            createdAt: (0, typeorm_2.LessThan)(cutoff),
+        });
         if (affected) {
             this.logger.log(`Pruned ${affected} income_message rows older than ${WebhooksService_1.MESSAGE_RETENTION_DAYS} days`);
         }
     }
     async createIncomeMessage(data) {
         for (let attempt = 0; attempt < 5; attempt++) {
-            const record = this.incomeMessageRepo.create({ ...data, messageId: (0, id_util_1.randomMessageId)() });
+            const record = this.incomeMessageRepo.create({
+                ...data,
+                messageId: (0, id_util_1.randomMessageId)(),
+            });
             try {
                 await this.incomeMessageRepo.insert(record);
                 return record;
@@ -479,11 +553,18 @@ Reply STOP to unsubscribe`);
     }
     smsScaffold(sender, toEmail, attachmentCount, messageId) {
         const replyHint = `Reply: R ${messageId}`;
-        const footer = attachmentCount > 0 ? `📎+${attachmentCount}  |  ${replyHint}` : replyHint;
+        const footer = attachmentCount > 0
+            ? `📎+${attachmentCount}  |  ${replyHint}`
+            : replyHint;
         const s = (0, text_util_1.ellipsize)(this.formatSender(sender), 40);
         const to = (0, text_util_1.ellipsize)(toEmail, 30);
         const fixed = `To: ${to}\nFrom: ${s}\n\n\n\n${footer}`;
-        return { to, s, footer, bodyBudget: Math.max(10, WebhooksService_1.SMS_LIMIT - fixed.length) };
+        return {
+            to,
+            s,
+            footer,
+            bodyBudget: Math.max(10, WebhooksService_1.SMS_LIMIT - fixed.length),
+        };
     }
     buildSms(sender, summary, attachmentCount, messageId, toEmail) {
         const { to, s, footer, bodyBudget } = this.smsScaffold(sender, toEmail, attachmentCount, messageId);
