@@ -24,6 +24,8 @@ export declare class WebhooksService {
     private readonly billing;
     private static readonly SMS_LIMIT;
     private static readonly MESSAGE_RETENTION_DAYS;
+    private static readonly MAX_SEND_ATTEMPTS;
+    private static readonly RETRY_WINDOW_HOURS;
     private readonly logger;
     private readonly stripe;
     private readonly pushChains;
@@ -31,6 +33,9 @@ export declare class WebhooksService {
     handleGmailPush(payload: Record<string, any>): Promise<void>;
     private processGmailPush;
     private advanceHistoryId;
+    private deliverToSets;
+    private recordDeliveryOutcome;
+    private parsePendingSetIds;
     handleInboundSms(from: string, body: string): Promise<void>;
     private static readonly INVALID_RECIPIENT_SMS;
     private static readonly MISSING_BODY_SMS;
@@ -43,6 +48,8 @@ export declare class WebhooksService {
     private buildSelectPrompt;
     handleStripeWebhook(rawBody: Buffer, sig: string): Promise<void>;
     renewExpiringWatches(): Promise<void>;
+    retryPendingSms(): Promise<void>;
+    private retryOnePendingSms;
     pruneOldMessages(): Promise<void>;
     private createIncomeMessage;
     private extractEmailAddress;

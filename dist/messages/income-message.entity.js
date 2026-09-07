@@ -22,6 +22,9 @@ let IncomeMessage = class IncomeMessage {
     subject;
     rfcMessageId;
     referencesHeader;
+    pendingSetIds;
+    sendAttempts;
+    lastAttemptAt;
 };
 exports.IncomeMessage = IncomeMessage;
 __decorate([
@@ -55,13 +58,35 @@ __decorate([
     __metadata("design:type", String)
 ], IncomeMessage.prototype, "subject", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ name: 'rfc_message_id', type: 'varchar', length: 255, nullable: true }),
+    (0, typeorm_1.Column)({
+        name: 'rfc_message_id',
+        type: 'varchar',
+        length: 255,
+        nullable: true,
+    }),
     __metadata("design:type", Object)
 ], IncomeMessage.prototype, "rfcMessageId", void 0);
 __decorate([
     (0, typeorm_1.Column)({ name: 'references_header', type: 'text', nullable: true }),
     __metadata("design:type", Object)
 ], IncomeMessage.prototype, "referencesHeader", void 0);
+__decorate([
+    (0, typeorm_1.Column)({
+        name: 'pending_set_ids',
+        type: 'varchar',
+        length: 255,
+        nullable: true,
+    }),
+    __metadata("design:type", Object)
+], IncomeMessage.prototype, "pendingSetIds", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ name: 'send_attempts', type: 'int', default: 0 }),
+    __metadata("design:type", Number)
+], IncomeMessage.prototype, "sendAttempts", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ name: 'last_attempt_at', type: 'datetime', nullable: true }),
+    __metadata("design:type", Object)
+], IncomeMessage.prototype, "lastAttemptAt", void 0);
 exports.IncomeMessage = IncomeMessage = __decorate([
     (0, typeorm_1.Index)('uq_income_message_gmail', ['email', 'gmailMessageId'], { unique: true }),
     (0, typeorm_1.Entity)('income_message')

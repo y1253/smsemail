@@ -68,7 +68,7 @@ export class PhonesService {
     await this.verificationRepo.save(verification);
 
     const body = `Your verification code is: ${code}. It expires in ${CODE_EXPIRY_MINUTES} minutes.`;
-    await this.signalwireService.sendSms(phone, body);
+    await this.signalwireService.sendSms(phone, body, CODE_EXPIRY_MINUTES * 60);
 
     return { sent: true };
   }

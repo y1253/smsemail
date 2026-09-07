@@ -89,8 +89,8 @@ export class UsersService {
   /**
    * Change the password of an email/password account.
    *
-   * Note: JWTs here are stateless with a 24h TTL and AuthGuard does no DB
-   * lookup, so this does NOT sign the user out on other devices.
+   * Signs the user out on every other device (ASVS 3.3.3): bumping
+   * token_version invalidates the `tv` claim that AuthGuard re-checks.
    */
   async changePassword(userId: number, dto: ChangePasswordDto) {
     // getProfile's `select` excludes the password column, so fetch the row

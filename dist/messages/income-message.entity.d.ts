@@ -9,4 +9,7 @@ export declare class IncomeMessage {
     subject: string;
     rfcMessageId: string | null;
     referencesHeader: string | null;
+    pendingSetIds: string | null;
+    sendAttempts: number;
+    lastAttemptAt: Date | null;
 }

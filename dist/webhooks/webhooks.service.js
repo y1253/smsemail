@@ -52,6 +52,8 @@ let WebhooksService = class WebhooksService {
     billing;
     static SMS_LIMIT = 160;
     static MESSAGE_RETENTION_DAYS = 30;
+    static MAX_SEND_ATTEMPTS = 5;
+    static RETRY_WINDOW_HOURS = 48;
     logger = new common_1.Logger(WebhooksService_1.name);
     stripe;
     pushChains = new Map();
@@ -147,20 +149,8 @@ let WebhooksService = class WebhooksService {
                     const { bodyBudget } = this.smsScaffold(msg.sender, email.email, msg.attachmentCount, saved.messageId);
                     const summary = await this.openAiService.summarize(msg.subject, msg.body, bodyBudget);
                     const sms = this.buildSms(msg.sender, summary, msg.attachmentCount, saved.messageId, email.email);
-                    const senderAddr = this.extractEmailAddress(msg.sender).toLowerCase();
-                    const sentTo = new Set();
-                    for (const set of activeSets) {
-                        if (set.phone.optedOutAt)
-                            continue;
-                        if (sentTo.has(set.phone.phone))
-                            continue;
-                        const filter = set.allowedSenders ?? [];
-                        if (filter.length > 0 &&
-                            !filter.some((s) => s.email === senderAddr))
-                            continue;
-                        await this.signalwireService.sendSms(set.phone.phone, sms);
-                        sentTo.add(set.phone.phone);
-                    }
+                    const { failed } = await this.deliverToSets(activeSets, msg.sender, sms);
+                    await this.recordDeliveryOutcome(saved.messageId, failed, 1);
                 }
                 catch (err) {
                     this.logger.error(`Failed to process Gmail message ${raw.id}: ${err}`);
@@ -178,6 +168,51 @@ let WebhooksService = class WebhooksService {
             return;
         current.lastHistoryId = newHistoryId;
         await this.emailRepo.save(current);
+    }
+    async deliverToSets(sets, sender, sms) {
+        const senderAddr = this.extractEmailAddress(sender).toLowerCase();
+        const sentTo = new Set();
+        const delivered = [];
+        const failed = [];
+        for (const set of sets) {
+            if (set.phone.optedOutAt)
+                continue;
+            if (sentTo.has(set.phone.phone))
+                continue;
+            const filter = set.allowedSenders ?? [];
+            if (filter.length > 0 && !filter.some((s) => s.email === senderAddr))
+                continue;
+            sentTo.add(set.phone.phone);
+            try {
+                await this.signalwireService.sendSms(set.phone.phone, sms);
+                delivered.push(set.setId);
+            }
+            catch (err) {
+                this.logger.error(`SMS send failed for set ${set.setId}, queued for retry: ${err}`);
+                failed.push(set.setId);
+            }
+        }
+        return { delivered, failed };
+    }
+    async recordDeliveryOutcome(messageId, failedSetIds, attemptDelta) {
+        await this.incomeMessageRepo
+            .createQueryBuilder()
+            .update(income_message_entity_1.IncomeMessage)
+            .set({
+            pendingSetIds: failedSetIds.length ? failedSetIds.join(',') : null,
+            sendAttempts: () => `send_attempts + ${Math.trunc(attemptDelta)}`,
+            lastAttemptAt: new Date(),
+        })
+            .where('message_id = :messageId', { messageId })
+            .execute();
+    }
+    parsePendingSetIds(raw) {
+        if (!raw)
+            return [];
+        return raw
+            .split(',')
+            .map((part) => Number(part.trim()))
+            .filter((n) => Number.isInteger(n) && n > 0);
     }
     async handleInboundSms(from, body) {
         const normalizedFrom = from.startsWith('+') ? from.slice(1) : from;
@@ -509,6 +544,56 @@ Reply STOP to unsubscribe`);
             }
         }
     }
+    async retryPendingSms() {
+        const cutoff = new Date(Date.now() - WebhooksService_1.RETRY_WINDOW_HOURS * 60 * 60 * 1000);
+        const rows = await this.incomeMessageRepo
+            .createQueryBuilder('m')
+            .leftJoinAndSelect('m.email', 'email')
+            .where('m.pending_set_ids IS NOT NULL')
+            .andWhere('m.send_attempts < :max', {
+            max: WebhooksService_1.MAX_SEND_ATTEMPTS,
+        })
+            .andWhere('m.create_at > :cutoff', { cutoff })
+            .getMany();
+        for (const row of rows) {
+            try {
+                await this.retryOnePendingSms(row);
+            }
+            catch (err) {
+                this.logger.error(`Retry failed for income_message ${row.messageId}: ${err}`);
+                await this.recordDeliveryOutcome(row.messageId, this.parsePendingSetIds(row.pendingSetIds), 1);
+            }
+        }
+    }
+    async retryOnePendingSms(row) {
+        const pendingIds = this.parsePendingSetIds(row.pendingSetIds);
+        if (!pendingIds.length) {
+            await this.recordDeliveryOutcome(row.messageId, [], 0);
+            return;
+        }
+        const sets = await this.setRepo.find({
+            where: { setId: (0, typeorm_2.In)(pendingIds), deletedAt: (0, typeorm_2.IsNull)() },
+            relations: ['phone', 'allowedSenders'],
+        });
+        if (!sets.length) {
+            this.logger.log(`Dropping pending SMS for income_message ${row.messageId}: no active sets remain`);
+            await this.recordDeliveryOutcome(row.messageId, [], 1);
+            return;
+        }
+        const email = row.email;
+        if (!email?.refreshToken || email.deletedAt) {
+            this.logger.log(`Dropping pending SMS for income_message ${row.messageId}: mailbox disconnected`);
+            await this.recordDeliveryOutcome(row.messageId, [], 1);
+            return;
+        }
+        const refreshToken = this.emailsService.decrypt(email.refreshToken);
+        const msg = await this.gmailService.fetchMessage(refreshToken, row.gmailMessageId);
+        const { bodyBudget } = this.smsScaffold(msg.sender, email.email, msg.attachmentCount, row.messageId);
+        const summary = await this.openAiService.summarize(msg.subject, msg.body, bodyBudget);
+        const sms = this.buildSms(msg.sender, summary, msg.attachmentCount, row.messageId, email.email);
+        const { failed } = await this.deliverToSets(sets, msg.sender, sms);
+        await this.recordDeliveryOutcome(row.messageId, failed, 1);
+    }
     async pruneOldMessages() {
         const cutoff = new Date(Date.now() - WebhooksService_1.MESSAGE_RETENTION_DAYS * 24 * 60 * 60 * 1000);
         const { affected } = await this.incomeMessageRepo.delete({
@@ -579,6 +664,12 @@ __decorate([
     __metadata("design:paramtypes", []),
     __metadata("design:returntype", Promise)
 ], WebhooksService.prototype, "renewExpiringWatches", null);
+__decorate([
+    (0, schedule_1.Cron)(schedule_1.CronExpression.EVERY_5_MINUTES),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", []),
+    __metadata("design:returntype", Promise)
+], WebhooksService.prototype, "retryPendingSms", null);
 __decorate([
     (0, schedule_1.Cron)('0 3 * * *'),
     __metadata("design:type", Function),

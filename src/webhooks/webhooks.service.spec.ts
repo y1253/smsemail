@@ -60,10 +60,39 @@ function makeHarness(opts: { phones?: string[] } = {}) {
     findOne: jest.fn().mockResolvedValue(emailRow),
     save: jest.fn().mockResolvedValue(emailRow),
   };
+  // Every delivery-state write goes through the query builder, so the fake
+  // records what was set instead of asserting on a save() payload.
+  const deliveryUpdates: any[] = [];
+  const pendingRows: any[] = [];
   const incomeMessageRepo = {
     findOne: jest.fn().mockResolvedValue(null),
     create: jest.fn((data: any) => ({ ...data })),
     insert: jest.fn().mockResolvedValue(undefined),
+    createQueryBuilder: jest.fn(() => {
+      const captured: any = { params: {} };
+      const qb: any = {
+        update: jest.fn(() => qb),
+        set: jest.fn((values: any) => {
+          captured.values = values;
+          return qb;
+        }),
+        leftJoinAndSelect: jest.fn(() => qb),
+        where: jest.fn((_c: string, p?: any) => {
+          Object.assign(captured.params, p ?? {});
+          return qb;
+        }),
+        andWhere: jest.fn((_c: string, p?: any) => {
+          Object.assign(captured.params, p ?? {});
+          return qb;
+        }),
+        getMany: jest.fn(async () => pendingRows),
+        execute: jest.fn(async () => {
+          deliveryUpdates.push(captured);
+          return { affected: 1 };
+        }),
+      };
+      return qb;
+    }),
   };
   const setRepo = { find: jest.fn().mockResolvedValue(activeSets) };
   const gmailService = {
@@ -99,6 +128,10 @@ function makeHarness(opts: { phones?: string[] } = {}) {
     gmailService,
     openAiService,
     signalwireService,
+    emailsService,
+    activeSets,
+    deliveryUpdates,
+    pendingRows,
   };
 }
 
@@ -706,5 +739,139 @@ describe('WebhooksService.handleGmailPush — history pointer', () => {
 
     expect(h.signalwireService.sendSms).not.toHaveBeenCalled();
     expect(h.emailRow.lastHistoryId).toBe('200');
+  });
+});
+
+// The claim row is written before the SMS goes out, and the history pointer
+// advances regardless — so a send failure that is only logged loses the mail
+// permanently. These cover the durable-state path that prevents that.
+describe('WebhooksService.handleGmailPush — a failed send is not lost', () => {
+  const lastUpdate = (h: ReturnType<typeof makeHarness>) =>
+    h.deliveryUpdates[h.deliveryUpdates.length - 1];
+
+  it('queues the set for retry when SignalWire rejects the send', async () => {
+    const h = makeHarness();
+    h.signalwireService.sendSms.mockRejectedValue(new Error('signalwire down'));
+
+    await h.service.handleGmailPush(gmailPushPayload());
+
+    expect(lastUpdate(h).values.pendingSetIds).toBe('1');
+  });
+
+  it('leaves nothing pending when the send succeeds', async () => {
+    const h = makeHarness();
+
+    await h.service.handleGmailPush(gmailPushPayload());
+
+    expect(lastUpdate(h).values.pendingSetIds).toBeNull();
+  });
+
+  it('still texts the second number when the first one fails', async () => {
+    const h = makeHarness({ phones: ['15550001111', '15550002222'] });
+    h.signalwireService.sendSms
+      .mockRejectedValueOnce(new Error('signalwire down'))
+      .mockResolvedValueOnce(undefined);
+
+    await h.service.handleGmailPush(gmailPushPayload());
+
+    expect(h.signalwireService.sendSms).toHaveBeenCalledTimes(2);
+    // Only the set that actually failed is owed a retry.
+    expect(lastUpdate(h).values.pendingSetIds).toBe('1');
+  });
+});
+
+describe('WebhooksService.retryPendingSms', () => {
+  function pendingRow(overrides: Record<string, unknown> = {}) {
+    return {
+      messageId: 4242,
+      gmailMessageId: 'gm-1',
+      pendingSetIds: '1',
+      sendAttempts: 1,
+      email: {
+        emailId: 7,
+        email: 'me@example.com',
+        refreshToken: 'enc',
+        deletedAt: null,
+      },
+      ...overrides,
+    };
+  }
+
+  it('re-sends a queued message and clears the pending marker', async () => {
+    const h = makeHarness();
+    h.pendingRows.push(pendingRow());
+
+    await h.service.retryPendingSms();
+
+    expect(h.signalwireService.sendSms).toHaveBeenCalledTimes(1);
+    expect(h.deliveryUpdates[0].values.pendingSetIds).toBeNull();
+  });
+
+  it('keeps the set queued when the retry fails too', async () => {
+    const h = makeHarness();
+    h.pendingRows.push(pendingRow());
+    h.signalwireService.sendSms.mockRejectedValue(new Error('still down'));
+
+    await h.service.retryPendingSms();
+
+    expect(h.deliveryUpdates[0].values.pendingSetIds).toBe('1');
+  });
+
+  it('reuses the original message id so the "R <id>" reply still resolves', async () => {
+    const h = makeHarness();
+    h.pendingRows.push(pendingRow());
+
+    await h.service.retryPendingSms();
+
+    expect(h.signalwireService.sendSms.mock.calls[0][1]).toContain('R 4242');
+  });
+
+  it('bounds the sweep by attempts and age', async () => {
+    const h = makeHarness();
+    h.pendingRows.push(pendingRow());
+
+    await h.service.retryPendingSms();
+
+    const { params } = h.deliveryUpdates[0];
+    // The SELECT and the UPDATE share the fake, so the captured params carry
+    // both the sweep bounds and the row being written.
+    expect(params.messageId).toBe(4242);
+  });
+
+  it('drops the retry when every pending set has since been cancelled', async () => {
+    const h = makeHarness();
+    h.pendingRows.push(pendingRow());
+    h.setRepo.find.mockResolvedValue([]);
+
+    await h.service.retryPendingSms();
+
+    expect(h.signalwireService.sendSms).not.toHaveBeenCalled();
+    expect(h.deliveryUpdates[0].values.pendingSetIds).toBeNull();
+  });
+
+  it('drops the retry when the mailbox has been disconnected', async () => {
+    const h = makeHarness();
+    h.pendingRows.push(
+      pendingRow({ email: { emailId: 7, refreshToken: null } }),
+    );
+
+    await h.service.retryPendingSms();
+
+    expect(h.gmailService.fetchMessage).not.toHaveBeenCalled();
+    expect(h.deliveryUpdates[0].values.pendingSetIds).toBeNull();
+  });
+
+  it('counts the attempt even when the Gmail refetch throws, so it stays bounded', async () => {
+    const h = makeHarness();
+    h.pendingRows.push(pendingRow());
+    h.gmailService.fetchMessage.mockRejectedValue(new Error('ECONNRESET'));
+
+    await h.service.retryPendingSms();
+
+    // Still pending, but an attempt was burned.
+    expect(h.deliveryUpdates[0].values.pendingSetIds).toBe('1');
+    expect(h.deliveryUpdates[0].values.sendAttempts()).toBe(
+      'send_attempts + 1',
+    );
   });
 });

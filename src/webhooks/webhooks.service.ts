@@ -2,7 +2,7 @@ import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, IsNull, In, MoreThan, LessThan } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
-import { Cron } from '@nestjs/schedule';
+import { Cron, CronExpression } from '@nestjs/schedule';
 import Stripe from 'stripe';
 import { Email } from '../emails/email.entity';
 import { Phone } from '../phones/phone.entity';
@@ -31,6 +31,13 @@ export class WebhooksService {
   // bounded or allocation starts colliding. Anything past this window is
   // pruned nightly and can no longer be replied to by number.
   private static readonly MESSAGE_RETENTION_DAYS = 30;
+  // Retry budget for a summary SMS that could not be handed to SignalWire.
+  // Bounded because a message that keeps failing is re-fetched from Gmail and
+  // re-summarized on every sweep, which costs an OpenAI call each time.
+  private static readonly MAX_SEND_ATTEMPTS = 5;
+  // Past this there is no point retrying: SignalWire caps ValidityPeriod at
+  // 48h, so a message accepted now could not outlive the window anyway.
+  private static readonly RETRY_WINDOW_HOURS = 48;
   private readonly logger = new Logger(WebhooksService.name);
   private readonly stripe: Stripe;
   // One in-flight push per mailbox. Gmail fires several notifications for a
@@ -187,26 +194,14 @@ export class WebhooksService {
             saved.messageId,
             email.email,
           );
-          // Lowercased here, not in the helper: set_allowed_sender.email is
-          // stored lowercased (SetsService), so the comparison needs it — but
-          // replies must keep the sender's original case.
-          const senderAddr = this.extractEmailAddress(msg.sender).toLowerCase();
-          // Nothing in the DB stops two active sets from carrying the same
-          // number (uniqueness is only enforced in app code), and that would be
-          // two identical texts with the same "R <id>".
-          const sentTo = new Set<string>();
-          for (const set of activeSets) {
-            if (set.phone.optedOutAt) continue; // number replied STOP — honor opt-out
-            if (sentTo.has(set.phone.phone)) continue;
-            const filter = set.allowedSenders ?? [];
-            if (
-              filter.length > 0 &&
-              !filter.some((s) => s.email === senderAddr)
-            )
-              continue;
-            await this.signalwireService.sendSms(set.phone.phone, sms);
-            sentTo.add(set.phone.phone);
-          }
+          const { failed } = await this.deliverToSets(
+            activeSets,
+            msg.sender,
+            sms,
+          );
+          // Durable, not just logged: this row already claims the Gmail id, so
+          // a dropped failure here means the mail can never become a text.
+          await this.recordDeliveryOutcome(saved.messageId, failed, 1);
         } catch (err) {
           this.logger.error(
             `Failed to process Gmail message ${raw.id}: ${err}`,
@@ -237,6 +232,78 @@ export class WebhooksService {
       return;
     current.lastHistoryId = newHistoryId;
     await this.emailRepo.save(current);
+  }
+
+  // Fans one summary out to every set that should receive it, isolating each
+  // send: previously a throw here abandoned the remaining phones too, so one
+  // unreachable number silenced everybody else on the same mailbox.
+  private async deliverToSets(
+    sets: EmailPhoneSet[],
+    sender: string,
+    sms: string,
+  ): Promise<{ delivered: number[]; failed: number[] }> {
+    // Lowercased here, not in the helper: set_allowed_sender.email is
+    // stored lowercased (SetsService), so the comparison needs it — but
+    // replies must keep the sender's original case.
+    const senderAddr = this.extractEmailAddress(sender).toLowerCase();
+    // Nothing in the DB stops two active sets from carrying the same
+    // number (uniqueness is only enforced in app code), and that would be
+    // two identical texts with the same "R <id>".
+    const sentTo = new Set<string>();
+    const delivered: number[] = [];
+    const failed: number[] = [];
+
+    for (const set of sets) {
+      if (set.phone.optedOutAt) continue; // number replied STOP — honor opt-out
+      if (sentTo.has(set.phone.phone)) continue;
+      const filter = set.allowedSenders ?? [];
+      if (filter.length > 0 && !filter.some((s) => s.email === senderAddr))
+        continue;
+      // Claim the number before the await, so a set that fails cannot let a
+      // duplicate set behind it text the same phone a second time.
+      sentTo.add(set.phone.phone);
+      try {
+        await this.signalwireService.sendSms(set.phone.phone, sms);
+        delivered.push(set.setId);
+      } catch (err) {
+        this.logger.error(
+          `SMS send failed for set ${set.setId}, queued for retry: ${err}`,
+        );
+        failed.push(set.setId);
+      }
+    }
+
+    return { delivered, failed };
+  }
+
+  // Writes what is still owed back onto the claim row. `attemptDelta` is 1 on
+  // the initial send and on each sweep, so MAX_SEND_ATTEMPTS actually bounds
+  // the work even when the failure happens before the send.
+  private async recordDeliveryOutcome(
+    messageId: number,
+    failedSetIds: number[],
+    attemptDelta: number,
+  ): Promise<void> {
+    await this.incomeMessageRepo
+      .createQueryBuilder()
+      .update(IncomeMessage)
+      .set({
+        pendingSetIds: failedSetIds.length ? failedSetIds.join(',') : null,
+        // Incremented in SQL rather than read-modify-write: the sweeper and a
+        // concurrent push can both touch this row.
+        sendAttempts: () => `send_attempts + ${Math.trunc(attemptDelta)}`,
+        lastAttemptAt: new Date(),
+      })
+      .where('message_id = :messageId', { messageId })
+      .execute();
+  }
+
+  private parsePendingSetIds(raw: string | null): number[] {
+    if (!raw) return [];
+    return raw
+      .split(',')
+      .map((part) => Number(part.trim()))
+      .filter((n) => Number.isInteger(n) && n > 0);
   }
 
   async handleInboundSms(from: string, body: string): Promise<void> {
@@ -750,6 +817,114 @@ Reply STOP to unsubscribe`,
         );
       }
     }
+  }
+
+  /**
+   * Finishes deliveries that failed at the SignalWire call.
+   *
+   * This cannot be driven off Gmail's history pointer: advanceHistoryId has
+   * already moved past the message by the time a send fails, so history.list
+   * will never surface it again. The claim row is the only remaining record,
+   * so redelivery is driven from it.
+   *
+   * The SMS text is deliberately not stored — see
+   * compliance/DATA_RETENTION_AND_DELETION.md ("SMS summary text — Not stored").
+   * The mail is re-fetched and re-summarized instead, which costs an OpenAI
+   * call, which is why MAX_SEND_ATTEMPTS bounds the sweep.
+   */
+  @Cron(CronExpression.EVERY_5_MINUTES)
+  async retryPendingSms(): Promise<void> {
+    const cutoff = new Date(
+      Date.now() - WebhooksService.RETRY_WINDOW_HOURS * 60 * 60 * 1000,
+    );
+    const rows = await this.incomeMessageRepo
+      .createQueryBuilder('m')
+      .leftJoinAndSelect('m.email', 'email')
+      .where('m.pending_set_ids IS NOT NULL')
+      .andWhere('m.send_attempts < :max', {
+        max: WebhooksService.MAX_SEND_ATTEMPTS,
+      })
+      .andWhere('m.create_at > :cutoff', { cutoff })
+      .getMany();
+
+    for (const row of rows) {
+      try {
+        await this.retryOnePendingSms(row);
+      } catch (err) {
+        // Still count the attempt, or a message that always throws before the
+        // send would be retried forever.
+        this.logger.error(
+          `Retry failed for income_message ${row.messageId}: ${err}`,
+        );
+        await this.recordDeliveryOutcome(
+          row.messageId,
+          this.parsePendingSetIds(row.pendingSetIds),
+          1,
+        );
+      }
+    }
+  }
+
+  private async retryOnePendingSms(row: IncomeMessage): Promise<void> {
+    const pendingIds = this.parsePendingSetIds(row.pendingSetIds);
+    if (!pendingIds.length) {
+      await this.recordDeliveryOutcome(row.messageId, [], 0);
+      return;
+    }
+
+    // Only sets that are still live. One cancelled between the failure and now
+    // is no longer owed anything, and leaving it pending would burn the whole
+    // retry budget on a set that can never be delivered to.
+    const sets = await this.setRepo.find({
+      where: { setId: In(pendingIds), deletedAt: IsNull() },
+      relations: ['phone', 'allowedSenders'],
+    });
+    if (!sets.length) {
+      this.logger.log(
+        `Dropping pending SMS for income_message ${row.messageId}: no active sets remain`,
+      );
+      await this.recordDeliveryOutcome(row.messageId, [], 1);
+      return;
+    }
+
+    const email = row.email;
+    if (!email?.refreshToken || email.deletedAt) {
+      this.logger.log(
+        `Dropping pending SMS for income_message ${row.messageId}: mailbox disconnected`,
+      );
+      await this.recordDeliveryOutcome(row.messageId, [], 1);
+      return;
+    }
+
+    const refreshToken = this.emailsService.decrypt(email.refreshToken);
+    const msg = await this.gmailService.fetchMessage(
+      refreshToken,
+      row.gmailMessageId,
+    );
+
+    // Same messageId as the first attempt, so the "R <id>" the user replies to
+    // still resolves to this row.
+    const { bodyBudget } = this.smsScaffold(
+      msg.sender,
+      email.email,
+      msg.attachmentCount,
+      row.messageId,
+    );
+    const summary = await this.openAiService.summarize(
+      msg.subject,
+      msg.body,
+      bodyBudget,
+    );
+    const sms = this.buildSms(
+      msg.sender,
+      summary,
+      msg.attachmentCount,
+      row.messageId,
+      email.email,
+    );
+
+    const { failed } = await this.deliverToSets(sets, msg.sender, sms);
+    await this.recordDeliveryOutcome(row.messageId, failed, 1);
   }
 
   @Cron('0 3 * * *')
