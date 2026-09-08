@@ -1011,7 +1011,7 @@ Reply STOP to unsubscribe`,
     // Ellipsized, not hard-cut: a chopped address must read as chopped.
     const s = ellipsize(this.formatSender(sender), 40);
     const to = ellipsize(toEmail, 30);
-    const fixed = `To: ${to}\nFrom: ${s}\n\n\n\n${footer}`;
+    const fixed = `From: ${s}\nTo: ${to}\n\n\n\n${footer}`;
     return {
       to,
       s,
@@ -1036,6 +1036,6 @@ Reply STOP to unsubscribe`,
     // Fit the summary to the exact room left, preferring a complete-sentence end
     // over a mid-sentence "..." cut.
     const body = fitToSentence(summary, bodyBudget);
-    return `To: ${to}\nFrom: ${s}\n\n${body}\n\n${footer}`;
+    return `From: ${s}\nTo: ${to}\n\n${body}\n\n${footer}`;
   }
 }

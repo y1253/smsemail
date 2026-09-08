@@ -643,7 +643,7 @@ Reply STOP to unsubscribe`);
             : replyHint;
         const s = (0, text_util_1.ellipsize)(this.formatSender(sender), 40);
         const to = (0, text_util_1.ellipsize)(toEmail, 30);
-        const fixed = `To: ${to}\nFrom: ${s}\n\n\n\n${footer}`;
+        const fixed = `From: ${s}\nTo: ${to}\n\n\n\n${footer}`;
         return {
             to,
             s,
@@ -654,7 +654,7 @@ Reply STOP to unsubscribe`);
     buildSms(sender, summary, attachmentCount, messageId, toEmail) {
         const { to, s, footer, bodyBudget } = this.smsScaffold(sender, toEmail, attachmentCount, messageId);
         const body = (0, text_util_1.fitToSentence)(summary, bodyBudget);
-        return `To: ${to}\nFrom: ${s}\n\n${body}\n\n${footer}`;
+        return `From: ${s}\nTo: ${to}\n\n${body}\n\n${footer}`;
     }
 };
 exports.WebhooksService = WebhooksService;
